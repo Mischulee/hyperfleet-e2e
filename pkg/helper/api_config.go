@@ -11,7 +11,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/logger"
+	"log/slog"
 )
 
 const (
@@ -46,7 +46,7 @@ type apiEntity struct {
 // required adapters for the Cluster entity. It reads the current Helm values,
 // patches the correct entity by kind (not by array index), and applies.
 func (h *Helper) UpgradeAPIRequiredAdapters(ctx context.Context, apiChartPath, namespace string, clusterAdapters []string) error {
-	logger.Info("upgrading API required adapters",
+	slog.Info("upgrading API required adapters",
 		"namespace", namespace,
 		"cluster_adapters", clusterAdapters)
 
@@ -65,7 +65,7 @@ func (h *Helper) UpgradeAPIRequiredAdapters(ctx context.Context, apiChartPath, n
 	tmpPath := tmpFile.Name()
 	defer func() {
 		if err := os.Remove(tmpPath); err != nil {
-			logger.Info("failed to remove temp values file", "path", tmpPath, "error", err)
+			slog.Error("failed to remove temp values file", "path", tmpPath, "error", err)
 		}
 	}()
 
@@ -88,11 +88,11 @@ func (h *Helper) UpgradeAPIRequiredAdapters(ctx context.Context, apiChartPath, n
 
 	output, err := upgradeCmd.CombinedOutput()
 	if err != nil {
-		logger.Error("helm upgrade API failed", "error", err, "output", string(output))
+		slog.Error("helm upgrade API failed", "error", err, "output", string(output))
 		return fmt.Errorf("failed to upgrade API: %w (output: %s)", err, string(output))
 	}
 
-	logger.Info("API required adapters updated successfully",
+	slog.Info("API required adapters updated successfully",
 		"cluster_adapters", clusterAdapters,
 		"output", string(output))
 
@@ -103,7 +103,7 @@ func (h *Helper) UpgradeAPIRequiredAdapters(ctx context.Context, apiChartPath, n
 // Uses a plain ticker instead of gomega.Eventually so the function returns
 // an error instead of panicking through gomega's fail handler.
 func (h *Helper) waitForAPIReady(ctx context.Context) error {
-	logger.Info("waiting for API to be reachable after rollout")
+	slog.Info("waiting for API to be reachable after rollout")
 
 	ticker := time.NewTicker(apiReadyInterval)
 	defer ticker.Stop()
@@ -111,7 +111,7 @@ func (h *Helper) waitForAPIReady(ctx context.Context) error {
 
 	for {
 		if _, err := h.Client.ListClusters(ctx); err == nil {
-			logger.Info("API is reachable after rollout")
+			slog.Info("API is reachable after rollout")
 			return nil
 		}
 		select {
@@ -183,11 +183,11 @@ func (h *Helper) RestoreAPIRequiredAdaptersWithRetry(ctx context.Context, apiCha
 	for attempt := 1; attempt <= maxRetries; attempt++ {
 		err := h.UpgradeAPIRequiredAdapters(ctx, apiChartPath, namespace, originalAdapters)
 		if err == nil {
-			logger.Info("API config restored successfully", "attempt", attempt)
+			slog.Info("API config restored successfully", "attempt", attempt)
 			return nil
 		}
 		lastErr = err
-		logger.Error("failed to restore API config, retrying",
+		slog.Error("failed to restore API config, retrying",
 			"attempt", attempt,
 			"max_retries", maxRetries,
 			"error", err)
@@ -203,7 +203,7 @@ func (h *Helper) RestoreAPIRequiredAdaptersWithRetry(ctx context.Context, apiCha
 	}
 
 	adapterList := strings.Join(originalAdapters, ",")
-	logger.Error("CRITICAL: failed to restore API config after all retries. Manual fix required",
+	slog.Error("CRITICAL: failed to restore API config after all retries. Manual fix required",
 		"max_retries", maxRetries,
 		"error", lastErr,
 		"original_adapters", adapterList)

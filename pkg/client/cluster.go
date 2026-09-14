@@ -7,17 +7,17 @@ import (
 
 	"github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/util"
 
-	"github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/logger"
+	"log/slog"
 )
 
 // CreateCluster creates a new cluster and returns the created resource.
 func (c *HyperFleetClient) CreateCluster(ctx context.Context, req ResourceCreateRequest) (*Resource, error) {
-	logger.Info("creating cluster", "name", req.Name)
+	slog.Info("creating cluster", "name", req.Name)
 	cluster, err := c.CreateResource(ctx, ClustersPath, req)
 	if err != nil {
 		return nil, fmt.Errorf("create cluster %q: %w", req.Name, err)
 	}
-	logger.Info("cluster created", "cluster_id", util.FromPtr(cluster.Id), "name", req.Name)
+	slog.Info("cluster created", "cluster_id", util.FromPtr(cluster.Id), "name", req.Name)
 	return cluster, nil
 }
 
@@ -38,12 +38,12 @@ func (c *HyperFleetClient) ListClustersWithParams(ctx context.Context, params ur
 
 // PatchCluster updates a cluster via PATCH.
 func (c *HyperFleetClient) PatchCluster(ctx context.Context, clusterID string, req ResourcePatchRequest) (*Resource, error) {
-	logger.Info("patching cluster", "cluster_id", clusterID)
+	slog.Info("patching cluster", "cluster_id", clusterID)
 	cluster, err := c.PatchResource(ctx, ClustersPath+"/"+clusterID, req)
 	if err != nil {
 		return nil, fmt.Errorf("patch cluster %s: %w", clusterID, err)
 	}
-	logger.Info("cluster patched", "cluster_id", clusterID, "generation", cluster.Generation)
+	slog.Info("cluster patched", "cluster_id", clusterID, "generation", cluster.Generation)
 	return cluster, nil
 }
 
@@ -54,12 +54,12 @@ func (c *HyperFleetClient) PatchClusterFromPayload(ctx context.Context, clusterI
 
 // DeleteCluster soft-deletes a cluster by ID (sets deleted_time, returns 202).
 func (c *HyperFleetClient) DeleteCluster(ctx context.Context, clusterID string) (*Resource, error) {
-	logger.Info("deleting cluster", "cluster_id", clusterID)
+	slog.Info("deleting cluster", "cluster_id", clusterID)
 	cluster, err := c.DeleteResource(ctx, ClustersPath+"/"+clusterID)
 	if err != nil {
 		return nil, fmt.Errorf("delete cluster %s: %w", clusterID, err)
 	}
-	logger.Info("cluster deleted", "cluster_id", clusterID)
+	slog.Info("cluster deleted", "cluster_id", clusterID)
 	return cluster, nil
 }
 
@@ -75,10 +75,10 @@ func (c *HyperFleetClient) GetClusterStatuses(ctx context.Context, clusterID str
 
 // ForceDeleteCluster permanently removes a cluster stuck in Finalizing from the database.
 func (c *HyperFleetClient) ForceDeleteCluster(ctx context.Context, clusterID, reason string) error {
-	logger.Info("force-deleting cluster", "cluster_id", clusterID, "reason", reason)
+	slog.Info("force-deleting cluster", "cluster_id", clusterID, "reason", reason)
 	if err := c.ForceDeleteResource(ctx, ClustersPath+"/"+clusterID, reason); err != nil {
 		return fmt.Errorf("force-delete cluster %s: %w", clusterID, err)
 	}
-	logger.Info("cluster force-deleted", "cluster_id", clusterID)
+	slog.Info("cluster force-deleted", "cluster_id", clusterID)
 	return nil
 }

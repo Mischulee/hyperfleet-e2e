@@ -8,7 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	"github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/logger"
+	"log/slog"
 )
 
 // HelmChartCloneOptions contains configuration for cloning a Helm chart repository
@@ -74,7 +74,7 @@ func (h *Helper) CloneHelmChart(ctx context.Context, opts HelmChartCloneOptions)
 
 	// Cleanup function to remove the cloned repository
 	cleanup = func() error {
-		logger.Info("cleaning up cloned Helm chart", "path", componentDir)
+		slog.Info("cleaning up cloned Helm chart", "path", componentDir)
 		if err := os.RemoveAll(componentDir); err != nil {
 			return fmt.Errorf("failed to remove cloned chart directory: %w", err)
 		}
@@ -88,7 +88,7 @@ func (h *Helper) CloneHelmChart(ctx context.Context, opts HelmChartCloneOptions)
 		redactedRepo = u.String()
 	}
 
-	logger.Info("cloning Helm chart repository",
+	slog.Info("cloning Helm chart repository",
 		"component", opts.Component,
 		"repo", redactedRepo,
 		"ref", opts.Ref,
@@ -96,7 +96,7 @@ func (h *Helper) CloneHelmChart(ctx context.Context, opts HelmChartCloneOptions)
 		"dest", componentDir)
 
 	// Step 1: Clone with sparse checkout (no files yet)
-	logger.Info("executing sparse checkout git clone")
+	slog.Info("executing sparse checkout git clone")
 	cmd := exec.CommandContext(ctx, "git", "clone", // #nosec G204 -- opts are from trusted config
 		"--depth", "1",
 		"--filter=blob:none",
@@ -112,7 +112,7 @@ func (h *Helper) CloneHelmChart(ctx context.Context, opts HelmChartCloneOptions)
 	}
 
 	// Step 2: Configure sparse checkout - only checkout the chart path
-	logger.Info("configuring sparse checkout", "sparse_path", opts.ChartPath)
+	slog.Info("configuring sparse checkout", "sparse_path", opts.ChartPath)
 
 	// Initialize sparse checkout (no cone mode)
 	cmd = exec.CommandContext(ctx, "git", "sparse-checkout", "init", "--no-cone")
@@ -131,7 +131,7 @@ func (h *Helper) CloneHelmChart(ctx context.Context, opts HelmChartCloneOptions)
 	}
 
 	// Checkout the files
-	logger.Info("checking out files")
+	slog.Info("checking out files")
 	cmd = exec.CommandContext(ctx, "git", "checkout", opts.Ref) // #nosec G204 -- opts.Ref is from trusted config
 	cmd.Dir = componentDir
 	if output, err := cmd.CombinedOutput(); err != nil {
@@ -147,7 +147,7 @@ func (h *Helper) CloneHelmChart(ctx context.Context, opts HelmChartCloneOptions)
 		return "", nil, fmt.Errorf("chart.yaml not found at %s (verify ChartPath is correct): %w", fullChartPath, err)
 	}
 
-	logger.Info("Helm chart cloned successfully",
+	slog.Info("Helm chart cloned successfully",
 		"component", opts.Component,
 		"chart_path", fullChartPath)
 

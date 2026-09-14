@@ -6,16 +6,16 @@ import (
 
 	"github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/util"
 
-	"github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/logger"
+	"log/slog"
 )
 
 func (c *HyperFleetClient) CreateWifConfig(ctx context.Context, req ResourceCreateRequest) (*Resource, error) {
-	logger.Info("creating wifconfig", "name", req.Name)
+	slog.Info("creating wifconfig", "name", req.Name)
 	wifConfig, err := c.CreateResource(ctx, WifConfigsPath, req)
 	if err != nil {
 		return nil, fmt.Errorf("create wifconfig %q: %w", req.Name, err)
 	}
-	logger.Info("wifconfig created", "wifconfig_id", util.FromPtr(wifConfig.Id), "name", req.Name)
+	slog.Info("wifconfig created", "wifconfig_id", util.FromPtr(wifConfig.Id), "name", req.Name)
 	return wifConfig, nil
 }
 
@@ -28,22 +28,22 @@ func (c *HyperFleetClient) ListWifConfigs(ctx context.Context, search string) (*
 }
 
 func (c *HyperFleetClient) DeleteWifConfig(ctx context.Context, wifConfigID string) (*Resource, error) {
-	logger.Info("deleting wifconfig", "wifconfig_id", wifConfigID)
+	slog.Info("deleting wifconfig", "wifconfig_id", wifConfigID)
 	wifConfig, err := c.DeleteResource(ctx, WifConfigsPath+"/"+wifConfigID)
 	if err != nil {
 		return nil, fmt.Errorf("delete wifconfig %q: %w", wifConfigID, err)
 	}
-	logger.Info("wifconfig deleted", "wifconfig_id", wifConfigID)
+	slog.Info("wifconfig deleted", "wifconfig_id", wifConfigID)
 	return wifConfig, nil
 }
 
 func (c *HyperFleetClient) PatchWifConfig(ctx context.Context, wifConfigID string, req ResourcePatchRequest) (*Resource, error) {
-	logger.Info("patching wifconfig", "wifconfig_id", wifConfigID)
+	slog.Info("patching wifconfig", "wifconfig_id", wifConfigID)
 	wifConfig, err := c.PatchResource(ctx, WifConfigsPath+"/"+wifConfigID, req)
 	if err != nil {
 		return nil, fmt.Errorf("patch wifconfig %q: %w", wifConfigID, err)
 	}
-	logger.Info("wifconfig patched", "wifconfig_id", wifConfigID, "generation", wifConfig.Generation)
+	slog.Info("wifconfig patched", "wifconfig_id", wifConfigID, "generation", wifConfig.Generation)
 	return wifConfig, nil
 }
 

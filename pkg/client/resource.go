@@ -11,7 +11,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/logger"
+	"log/slog"
 )
 
 const apiPrefix = "/api/hyperfleet/v1/"
@@ -198,7 +198,7 @@ func (c *HyperFleetClient) PatchResource(ctx context.Context, path string, body 
 }
 
 func (c *HyperFleetClient) CreateResourceFromPayload(ctx context.Context, path string, payloadPath string) (*Resource, error) {
-	logger.Debug("loading resource payload", "path", path, "payload_path", payloadPath)
+	slog.Debug("loading resource payload", "path", path, "payload_path", payloadPath)
 
 	payload, err := loadPayloadFromFile[map[string]any](payloadPath)
 	if err != nil {
@@ -209,7 +209,7 @@ func (c *HyperFleetClient) CreateResourceFromPayload(ctx context.Context, path s
 }
 
 func (c *HyperFleetClient) CreateResourceFromPayloadWith(ctx context.Context, path string, payloadPath string, overrides map[string]any) (*Resource, error) {
-	logger.Debug("loading resource payload", "path", path, "payload_path", payloadPath)
+	slog.Debug("loading resource payload", "path", path, "payload_path", payloadPath)
 
 	payload, err := loadPayloadFromFile[map[string]any](payloadPath)
 	if err != nil {
@@ -221,7 +221,7 @@ func (c *HyperFleetClient) CreateResourceFromPayloadWith(ctx context.Context, pa
 }
 
 func (c *HyperFleetClient) PatchResourceFromPayload(ctx context.Context, path string, payloadPath string) (*Resource, error) {
-	logger.Debug("loading resource patch payload", "path", path, "payload_path", payloadPath)
+	slog.Debug("loading resource patch payload", "path", path, "payload_path", payloadPath)
 
 	payload, err := loadPayloadFromFile[map[string]any](payloadPath)
 	if err != nil {

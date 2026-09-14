@@ -13,7 +13,7 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/client/maestro"
 	"github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/config"
 	"github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/helper/helm"
-	"github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/logger"
+	"log/slog"
 )
 
 type CleanupHelper struct {
@@ -60,7 +60,7 @@ func NewCleanupHelper() (*CleanupHelper, error) {
 func CleanupPubSubResources() {
 	c, err := NewCleanupHelper()
 	if err != nil {
-		logger.Error("failed to create cleanup helper for Pub/Sub sweep", "error", err)
+		slog.Error("failed to create cleanup helper for Pub/Sub sweep", "error", err)
 		return
 	}
 
@@ -72,7 +72,7 @@ func CleanupPubSubResources() {
 	defer cancel()
 
 	if err := c.SweepPubsubTestAdapterResources(ctx); err != nil {
-		logger.Error("failed to cleanup Pub/Sub test resources", "error", err)
+		slog.Error("failed to cleanup Pub/Sub test resources", "error", err)
 	}
 }
 
@@ -83,7 +83,7 @@ func CleanupPubSubResources() {
 func CleanupKubeResources() {
 	c, err := NewCleanupHelper()
 	if err != nil {
-		logger.Error("failed to create cleanup helper for K8s sweep", "error", err)
+		slog.Error("failed to create cleanup helper for K8s sweep", "error", err)
 		return
 	}
 
@@ -95,26 +95,26 @@ func CleanupKubeResources() {
 	releases, err := helmClient.ListReleasesBySelector(c.labelSelectorListOptions.LabelSelector)
 	if err != nil {
 		// Failed to list releases, so skipping uninstall
-		logger.Error("failed to list helm releases", "error", err)
+		slog.Error("failed to list helm releases", "error", err)
 		// Still proceeding with cleanup
 	} else {
-		logger.Info("found helm releases", "count", len(releases))
+		slog.Info("found helm releases", "count", len(releases))
 		for _, release := range releases {
 			err := helmClient.UninstallRelease(ctx, release, c.cfg.Namespace)
 			if err != nil {
-				logger.Error("failed to uninstall helm release", "name", release, "error", err)
+				slog.Error("failed to uninstall helm release", "name", release, "error", err)
 				continue
 			}
-			logger.Info("uninstalled helm chart", "name", release)
+			slog.Info("uninstalled helm chart", "name", release)
 		}
 	}
 
 	// Step 2: Sweep resources that contain the given label selector
 	if err := c.SweepLabeledResources(ctx); err != nil {
-		logger.Error("failed to cleanup test resources", "error", err)
+		slog.Error("failed to cleanup test resources", "error", err)
 	}
 
-	logger.Info("test resources cleaned up")
+	slog.Info("test resources cleaned up")
 }
 
 func (c *CleanupHelper) SweepPubsubTestAdapterResources(ctx context.Context) error {
@@ -138,63 +138,63 @@ func (c *CleanupHelper) SweepPubsubTestAdapterResources(ctx context.Context) err
 	if len(errorList) > 0 {
 		return fmt.Errorf("failed to delete some Pub/Sub resources: %s", strings.Join(errorList, ", "))
 	}
-	logger.Info("deleted Pub/Sub resources for adapters", "count", len(deployments))
+	slog.Info("deleted Pub/Sub resources for adapters", "count", len(deployments))
 	return nil
 }
 
 // SweepLabeledResources iterates through labeled resources and deletes any orphaned resources
 func (c *CleanupHelper) SweepLabeledResources(ctx context.Context) error {
-	logger.Info("Starting robust test cleanup with label selector:", "labelSelector", c.labelSelectorListOptions.LabelSelector)
+	slog.Info("Starting robust test cleanup with label selector:", "labelSelector", c.labelSelectorListOptions.LabelSelector)
 
 	// Phase 1: Delete ResourceBundles Created by Run ID
-	logger.Info("Phase 1: Best effort to delete Resource Bundles created by run ID")
+	slog.Info("Phase 1: Best effort to delete Resource Bundles created by run ID")
 	if rbs, err := c.maestroClient.FindResourceBundlesByRunID(ctx, c.cfg.RunID); err == nil {
 		for _, rb := range rbs {
 			// Best effort deletion of resource bundles
 			err := c.maestroClient.DeleteResourceBundle(ctx, rb.ID)
 			if err != nil {
-				logger.Error("failed to delete resource bundle", "error", err)
+				slog.Error("failed to delete resource bundle", "error", err)
 			}
 		}
 	} else {
-		logger.Error("failed to get resource bundles by run Id", "error", err)
+		slog.Error("failed to get resource bundles by run Id", "error", err)
 	}
 
 	// Phase 2: Delete resources (Background propagation - don't wait for cascade)
-	logger.Info("Phase 2: Best effort to delete resources")
+	slog.Info("Phase 2: Best effort to delete resources")
 	if err := c.deleteJobs(ctx); err != nil {
-		logger.Error("failed to delete jobs", "error", err)
+		slog.Error("failed to delete jobs", "error", err)
 	}
 	if err := c.deleteDeployments(ctx); err != nil {
-		logger.Error("failed to delete deployments", "error", err)
+		slog.Error("failed to delete deployments", "error", err)
 	}
 	if err := c.deleteConfigMaps(ctx); err != nil {
-		logger.Error("failed to delete configmaps", "error", err)
+		slog.Error("failed to delete configmaps", "error", err)
 	}
 	if err := c.deleteNamespacesForce(ctx); err != nil {
-		logger.Error("failed to delete namespaces", "error", err)
+		slog.Error("failed to delete namespaces", "error", err)
 	}
 
 	// Phase 3: Wait for deletion to complete (poll until resources are gone or timeout)
-	logger.Info("Phase 3: Waiting for deletion to complete (polling for up to 3 minutes)")
+	slog.Info("Phase 3: Waiting for deletion to complete (polling for up to 3 minutes)")
 	err := wait.PollUntilContextTimeout(ctx, 1*time.Minute, 3*time.Minute, true, func(ctx context.Context) (bool, error) {
 		remaining, err := c.countRemainingResources(ctx)
 		if err != nil {
-			logger.Error("failed to count remaining resources", "error", err)
+			slog.Error("failed to count remaining resources", "error", err)
 			return false, nil
 		}
 		if remaining == 0 {
-			logger.Info("all resources deleted successfully")
+			slog.Info("all resources deleted successfully")
 			return true, nil
 		}
-		logger.Info("resources still being deleted", "remaining", remaining)
+		slog.Info("resources still being deleted", "remaining", remaining)
 		return false, nil
 	})
 	if err != nil {
 		return fmt.Errorf("not all resources were deleted in time: %w", err)
 	}
 
-	logger.Info("cleanup completed successfully with all resources deleted")
+	slog.Info("cleanup completed successfully with all resources deleted")
 	return nil
 }
 
@@ -207,7 +207,7 @@ func (c *CleanupHelper) countRemainingResources(ctx context.Context) (int, error
 	// Count Namespaces
 	namespaces, err := c.k8sClient.CoreV1().Namespaces().List(ctx, c.labelSelectorListOptions)
 	if err != nil {
-		logger.Error("failed to list Namespaces", "error", err)
+		slog.Error("failed to list Namespaces", "error", err)
 		errorList = append(errorList, "Namespaces")
 	} else {
 		count += len(namespaces.Items)
@@ -216,7 +216,7 @@ func (c *CleanupHelper) countRemainingResources(ctx context.Context) (int, error
 	// Count Jobs
 	jobs, err := c.k8sClient.BatchV1().Jobs("").List(ctx, c.labelSelectorListOptions)
 	if err != nil {
-		logger.Error("failed to list Jobs", "error", err)
+		slog.Error("failed to list Jobs", "error", err)
 		errorList = append(errorList, "Jobs")
 	} else {
 		count += len(jobs.Items)
@@ -225,7 +225,7 @@ func (c *CleanupHelper) countRemainingResources(ctx context.Context) (int, error
 	// Count Deployments
 	deployments, err := c.k8sClient.AppsV1().Deployments("").List(ctx, c.labelSelectorListOptions)
 	if err != nil {
-		logger.Error("failed to list Deployments", "error", err)
+		slog.Error("failed to list Deployments", "error", err)
 		errorList = append(errorList, "Deployments")
 	} else {
 		count += len(deployments.Items)
@@ -234,7 +234,7 @@ func (c *CleanupHelper) countRemainingResources(ctx context.Context) (int, error
 	// Count ConfigMaps
 	configMaps, err := c.k8sClient.CoreV1().ConfigMaps("").List(ctx, c.labelSelectorListOptions)
 	if err != nil {
-		logger.Error("failed to list ConfigMaps", "error", err)
+		slog.Error("failed to list ConfigMaps", "error", err)
 		errorList = append(errorList, "ConfigMaps")
 	} else {
 		count += len(configMaps.Items)
@@ -255,9 +255,9 @@ func (c *CleanupHelper) deleteJobs(ctx context.Context) error {
 		return fmt.Errorf("failed to list Jobs: %w", err)
 	}
 	for _, job := range jobs.Items {
-		logger.Warn("deleting Job", "name", job.Name, "namespace", job.Namespace)
+		slog.Warn("deleting Job", "name", job.Name, "namespace", job.Namespace)
 		if err := c.k8sClient.BatchV1().Jobs(job.Namespace).Delete(ctx, job.Name, metav1.DeleteOptions{}); err != nil {
-			logger.Error("failed to delete Job", "name", job.Name, "namespace", job.Namespace, "error", err)
+			slog.Error("failed to delete Job", "name", job.Name, "namespace", job.Namespace, "error", err)
 		}
 	}
 	return nil
@@ -269,9 +269,9 @@ func (c *CleanupHelper) deleteDeployments(ctx context.Context) error {
 		return fmt.Errorf("failed to list Deployments: %w", err)
 	}
 	for _, deployment := range deployments.Items {
-		logger.Warn("deleting Deployment", "name", deployment.Name, "namespace", deployment.Namespace)
+		slog.Warn("deleting Deployment", "name", deployment.Name, "namespace", deployment.Namespace)
 		if err := c.k8sClient.AppsV1().Deployments(deployment.Namespace).Delete(ctx, deployment.Name, metav1.DeleteOptions{}); err != nil {
-			logger.Error("failed to delete Deployment", "name", deployment.Name, "namespace", deployment.Namespace, "error", err)
+			slog.Error("failed to delete Deployment", "name", deployment.Name, "namespace", deployment.Namespace, "error", err)
 		}
 	}
 	return nil
@@ -283,9 +283,9 @@ func (c *CleanupHelper) deleteConfigMaps(ctx context.Context) error {
 		return fmt.Errorf("failed to list ConfigMaps: %w", err)
 	}
 	for _, configMap := range configMaps.Items {
-		logger.Warn("deleting ConfigMap", "name", configMap.Name, "namespace", configMap.Namespace)
+		slog.Warn("deleting ConfigMap", "name", configMap.Name, "namespace", configMap.Namespace)
 		if err := c.k8sClient.CoreV1().ConfigMaps(configMap.Namespace).Delete(ctx, configMap.Name, metav1.DeleteOptions{}); err != nil {
-			logger.Error("failed to delete ConfigMap", "name", configMap.Name, "namespace", configMap.Namespace, "error", err)
+			slog.Error("failed to delete ConfigMap", "name", configMap.Name, "namespace", configMap.Namespace, "error", err)
 		}
 	}
 	return nil
@@ -304,9 +304,9 @@ func (c *CleanupHelper) deleteNamespacesForce(ctx context.Context) error {
 		GracePeriodSeconds: &zeroInt64,
 	}
 	for _, namespace := range namespaces.Items {
-		logger.Warn("deleting Namespace", "name", namespace.Name)
+		slog.Warn("deleting Namespace", "name", namespace.Name)
 		if err := c.k8sClient.CoreV1().Namespaces().Delete(ctx, namespace.Name, deleteOptions); err != nil {
-			logger.Error("failed to delete Namespace", "name", namespace.Name, "error", err)
+			slog.Error("failed to delete Namespace", "name", namespace.Name, "error", err)
 		}
 	}
 	return nil
