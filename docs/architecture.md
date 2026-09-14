@@ -20,7 +20,7 @@ pkg/
 ├── e2e/                - Test execution engine (Ginkgo)
 ├── helper/             - Test helpers (pollers, matchers, resource management)
 ├── labels/             - Test label definitions
-└── logger/             - Structured logging (slog)
+└── util/               - Shared utility functions
 ```
 
 ## Resource Management
@@ -167,42 +167,25 @@ Built-in Defaults (lowest priority)
 - `DeployAdapter(ctx, opts)` - Deploy adapter via Helm upgrade --install
 - `UninstallAdapter(ctx, releaseName, namespace)` - Uninstall adapter via Helm
 
-### pkg/logger
-
-**Purpose**: Structured logging based on Go's `log/slog` package
-
-**Key Features**:
-- Structured logging with automatic fields (component, version, hostname)
-- Context-aware methods for cluster and error logging
-- Configurable output format (text, JSON)
-- Configurable log level (debug, info, warn, error)
-
-**Key Functions**:
-- `Init(cfg, buildVersion)` - Initialize logger with configuration
-- `InfoWithCluster(clusterID, msg, fields...)` - Log with cluster context
-- `ErrorWithError(msg, err, fields...)` - Log with error details
-
-**Automatic Fields**:
-- `component` - Package/module name
-- `version` - Framework version
-- `hostname` - Execution host
-- `cluster_id` - Cluster ID (when using InfoWithCluster)
-- `error` - Error details (when using ErrorWithError)
-
 ### pkg/e2e
 
-**Purpose**: Test execution engine and Ginkgo configuration
+**Purpose**: Test execution engine, Ginkgo configuration, and process-wide structured logging
 
 **Key Features**:
 - Ginkgo suite configuration
 - JUnit report generation
 - Test filtering (labels, focus, skip)
 - Suite timeout management
+- Direct use of Go's `log/slog` throughout the framework
+- Shared `hyperfleet-logger` handler, which adds `component`, `version`, and `hostname` to every record
+- Ginkgo log handler that adds `test_case` for log records emitted during a spec
+- Configurable output format (text, JSON), level (debug, info, warn, error), and output (stdout, stderr)
 
 **Key Functions**:
 - `RunTests(ctx)` - Main entry point for test execution
 - Configures Ginkgo reporters, timeouts, and filters
 - Handles suite-level setup and teardown
+- `initLogging(cfg)` - Configures the default `slog` logger with the shared handler and Ginkgo context
 
 ## Configuration Priority
 

@@ -8,6 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/onsi/ginkgo/v2"
+	"github.com/onsi/ginkgo/v2/extensions/globals"
+	"github.com/onsi/gomega"
 	hfl "github.com/openshift-hyperfleet/hyperfleet-logger"
 )
 
@@ -31,6 +34,29 @@ func TestGinkgoLogHandler_ForwardsRecord(t *testing.T) {
 	if got := entry["key"]; got != "value" {
 		t.Errorf("key = %v, want value", got)
 	}
+}
+
+func TestGinkgoLogHandler_AddsCurrentSpecName(t *testing.T) {
+	globals.Reset()
+	t.Cleanup(globals.Reset)
+	gomega.RegisterFailHandler(ginkgo.Fail)
+
+	const specName = "adds the current spec name to the log record"
+	ginkgo.Describe("GinkgoLogHandler", func() {
+		ginkgo.It(specName, func() {
+			var output bytes.Buffer
+			handler := &GinkgoLogHandler{Handler: slog.NewJSONHandler(&output, nil)}
+			record := slog.NewRecord(time.Now(), slog.LevelInfo, "test log", 0)
+
+			gomega.Expect(handler.Handle(t.Context(), record)).To(gomega.Succeed())
+
+			var entry map[string]any
+			gomega.Expect(json.Unmarshal(output.Bytes(), &entry)).To(gomega.Succeed())
+			gomega.Expect(entry).To(gomega.HaveKeyWithValue("test_case", specName))
+		})
+	})
+
+	ginkgo.RunSpecs(t, "GinkgoLogHandler Spec Context Suite")
 }
 
 func TestNewLogHandler_SanitizesTextOutput(t *testing.T) {

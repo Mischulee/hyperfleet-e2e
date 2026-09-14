@@ -71,7 +71,6 @@ hyperfleet-e2e/
 │   ├── e2e/          - Test execution engine (Ginkgo)
 │   ├── helper/       - Test helper utilities
 │   ├── labels/       - Test label definitions
-│   ├── logger/       - Structured logging (slog)
 │   └── util/         - Shared utility functions
 ├── e2e/              - Test suites
 │   ├── adapter/      - Adapter lifecycle tests
