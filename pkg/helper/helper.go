@@ -14,7 +14,7 @@ import (
 	k8sclient "github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/client/kubernetes"
 	"github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/client/maestro"
 	"github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/config"
-	"github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/logger"
+	"log/slog"
 )
 
 // Helper provides utility functions for e2e tests
@@ -50,12 +50,12 @@ func (h *Helper) GetTestCluster(ctx context.Context, payloadPath string) (string
 // CleanupTestCluster deletes the test cluster via the HyperFleet API and waits for hard-delete (404).
 // The API DELETE owns the full cleanup lifecycle: adapter finalization, Maestro teardown, namespace deletion.
 func (h *Helper) CleanupTestCluster(ctx context.Context, clusterID string) error {
-	logger.Info("deleting cluster via API", "cluster_id", clusterID)
+	slog.Info("deleting cluster via API", "cluster_id", clusterID)
 
 	if _, err := h.Client.DeleteCluster(ctx, clusterID); err != nil {
 		var httpErr *client.HTTPError
 		if errors.As(err, &httpErr) && httpErr.StatusCode == http.StatusNotFound {
-			logger.Info("cluster already deleted", "cluster_id", clusterID)
+			slog.Info("cluster already deleted", "cluster_id", clusterID)
 			return nil
 		}
 		return fmt.Errorf("delete cluster %s: %w", clusterID, err)
@@ -69,7 +69,7 @@ func (h *Helper) CleanupTestCluster(ctx context.Context, clusterID string) error
 			return fmt.Errorf("polling hard-delete for cluster %s: %w", clusterID, err)
 		}
 		if status == http.StatusNotFound {
-			logger.Info("cluster hard-deleted", "cluster_id", clusterID)
+			slog.Info("cluster hard-deleted", "cluster_id", clusterID)
 			return nil
 		}
 		if status >= 400 {
@@ -94,7 +94,7 @@ func (h *Helper) DeferClusterCleanup(clusterID string) {
 // CleanupTestNodePool deletes the test nodepool via the HyperFleet API and waits for hard-delete (404).
 // The API DELETE owns the full cleanup lifecycle.
 func (h *Helper) CleanupTestNodePool(ctx context.Context, clusterID, nodepoolID string) error {
-	logger.Info("deleting nodepool via API", "cluster_id", clusterID, "nodepool_id", nodepoolID)
+	slog.Info("deleting nodepool via API", "cluster_id", clusterID, "nodepool_id", nodepoolID)
 
 	if _, err := h.Client.DeleteNodePool(ctx, clusterID, nodepoolID); err != nil {
 		return fmt.Errorf("delete nodepool %s: %w", nodepoolID, err)
@@ -108,7 +108,7 @@ func (h *Helper) CleanupTestNodePool(ctx context.Context, clusterID, nodepoolID 
 			return fmt.Errorf("polling hard-delete for nodepool %s: %w", nodepoolID, err)
 		}
 		if status == http.StatusNotFound {
-			logger.Info("nodepool hard-deleted", "cluster_id", clusterID, "nodepool_id", nodepoolID)
+			slog.Info("nodepool hard-deleted", "cluster_id", clusterID, "nodepool_id", nodepoolID)
 			return nil
 		}
 		if status >= 400 {
@@ -123,13 +123,13 @@ func (h *Helper) CleanupTestNodePool(ctx context.Context, clusterID, nodepoolID 
 // CleanupTestChannel deletes all versions under a channel, then deletes the channel.
 // Channels/versions are non-reconcilable resources with no hard-delete — cleanup is just soft-delete, no 404 polling.
 func (h *Helper) CleanupTestChannel(ctx context.Context, channelID string) error {
-	logger.Info("cleaning up channel", "channel_id", channelID)
+	slog.Info("cleaning up channel", "channel_id", channelID)
 
 	versions, err := h.Client.ListVersions(ctx, channelID, "")
 	if err != nil {
 		var httpErr *client.HTTPError
 		if errors.As(err, &httpErr) && httpErr.StatusCode == http.StatusNotFound {
-			logger.Info("channel already gone", "channel_id", channelID)
+			slog.Info("channel already gone", "channel_id", channelID)
 			return nil
 		}
 		return fmt.Errorf("list versions for channel %s: %w", channelID, err)
@@ -145,7 +145,7 @@ func (h *Helper) CleanupTestChannel(ctx context.Context, channelID string) error
 			if errors.As(err, &httpErr) && httpErr.StatusCode == http.StatusNotFound {
 				continue
 			}
-			logger.Error("failed to delete version during cleanup", "channel_id", channelID, "version_id", *v.Id, "error", err)
+			slog.Error("failed to delete version during cleanup", "channel_id", channelID, "version_id", *v.Id, "error", err)
 			if deleteErr == nil {
 				deleteErr = fmt.Errorf("delete version %s: %w", *v.Id, err)
 			}
@@ -155,31 +155,31 @@ func (h *Helper) CleanupTestChannel(ctx context.Context, channelID string) error
 	if _, err := h.Client.DeleteChannel(ctx, channelID); err != nil {
 		var httpErr *client.HTTPError
 		if errors.As(err, &httpErr) && httpErr.StatusCode == http.StatusNotFound {
-			logger.Info("channel already deleted", "channel_id", channelID)
+			slog.Info("channel already deleted", "channel_id", channelID)
 			return deleteErr
 		}
 		return fmt.Errorf("delete channel %s: %w", channelID, err)
 	}
 
-	logger.Info("channel cleaned up", "channel_id", channelID)
+	slog.Info("channel cleaned up", "channel_id", channelID)
 	return deleteErr
 }
 
 // CleanupTestWifConfig deletes a WIF config resource.
 // WIF configs are non-reconcilable resources with no hard-delete — cleanup is just soft-delete, no 404 polling.
 func (h *Helper) CleanupTestWifConfig(ctx context.Context, wifConfigID string) error {
-	logger.Info("cleaning up wifconfig", "wifconfig_id", wifConfigID)
+	slog.Info("cleaning up wifconfig", "wifconfig_id", wifConfigID)
 
 	if _, err := h.Client.DeleteWifConfig(ctx, wifConfigID); err != nil {
 		var httpErr *client.HTTPError
 		if errors.As(err, &httpErr) && (httpErr.StatusCode == http.StatusNotFound || httpErr.StatusCode == http.StatusConflict) {
-			logger.Info("wifconfig cleanup skipped", "wifconfig_id", wifConfigID, "status", httpErr.StatusCode)
+			slog.Info("wifconfig cleanup skipped", "wifconfig_id", wifConfigID, "status", httpErr.StatusCode)
 			return nil
 		}
 		return fmt.Errorf("delete wifconfig %s: %w", wifConfigID, err)
 	}
 
-	logger.Info("wifconfig cleaned up", "wifconfig_id", wifConfigID)
+	slog.Info("wifconfig cleaned up", "wifconfig_id", wifConfigID)
 	return nil
 }
 

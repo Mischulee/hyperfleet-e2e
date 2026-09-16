@@ -10,7 +10,7 @@ import (
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/cli"
 
-	"github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/logger"
+	"log/slog"
 )
 
 // Client wraps Helm SDK functionality
@@ -41,14 +41,14 @@ func (c *Client) initActionConfig() (*action.Configuration, error) {
 
 		// Initialize with REST client getter, namespace, and driver
 		if err := actionConfig.Init(c.settings.RESTClientGetter(), c.namespace, helmDriver, func(format string, v ...interface{}) {
-			logger.Info(fmt.Sprintf(format, v...))
+			slog.Info(fmt.Sprintf(format, v...))
 		}); err != nil {
 			c.configErr = fmt.Errorf("failed to init Helm action config: %w", err)
 			return
 		}
 
 		c.actionConfig = actionConfig
-		logger.Info("initialized Helm action config", "namespace", c.namespace)
+		slog.Info("initialized Helm action config", "namespace", c.namespace)
 	})
 
 	return c.actionConfig, c.configErr
@@ -79,11 +79,11 @@ func (c *Client) ListReleasesBySelector(labelSelector string) ([]string, error) 
 	for _, rel := range results {
 		// check that helm list is only listing releases in namespace
 		if rel.Namespace != c.namespace {
-			logger.Warn("helm incorrectly listing releases outside namespace")
+			slog.Warn("helm incorrectly listing releases outside namespace")
 			continue
 		}
 		releases = append(releases, rel.Name)
-		logger.Info("found Helm release", "release", rel.Name)
+		slog.Info("found Helm release", "release", rel.Name)
 	}
 
 	return releases, nil
@@ -92,7 +92,7 @@ func (c *Client) ListReleasesBySelector(labelSelector string) ([]string, error) 
 // UninstallRelease uninstalls the helm release. This workflow matches the way the adapters are currently installed.
 // Future work can be done to move helm releases to be installed with helm sdk
 func (c *Client) UninstallRelease(ctx context.Context, releaseName, namespace string) error {
-	logger.Info("uninstalling helm release",
+	slog.Info("uninstalling helm release",
 		"release_name", releaseName,
 		"namespace", namespace)
 
@@ -112,6 +112,6 @@ func (c *Client) UninstallRelease(ctx context.Context, releaseName, namespace st
 		return fmt.Errorf("failed to uninstall release: %w (output: %s)", err, string(output))
 	}
 
-	logger.Info("helm uninstall completed", "release", releaseName, "namespace", namespace)
+	slog.Info("helm uninstall completed", "release", releaseName, "namespace", namespace)
 	return nil
 }

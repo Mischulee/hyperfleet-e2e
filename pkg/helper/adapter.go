@@ -17,10 +17,10 @@ import (
 	pubsubadmin "cloud.google.com/go/pubsub/v2/apiv1"
 	pubsubpb "cloud.google.com/go/pubsub/v2/apiv1/pubsubpb"
 	"github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/config"
-	"github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/logger"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"log/slog"
 )
 
 type AdapterDeployment struct {
@@ -126,7 +126,7 @@ func (h *Helper) DeployAdapter(ctx context.Context, opts AdapterDeploymentOption
 
 	releaseName := opts.ReleaseName
 
-	logger.Info("deploying adapter via Helm",
+	slog.Info("deploying adapter via Helm",
 		"adapter_name", opts.AdapterName,
 		"release_name", releaseName,
 		"namespace", opts.Namespace)
@@ -137,14 +137,14 @@ func (h *Helper) DeployAdapter(ctx context.Context, opts AdapterDeploymentOption
 
 	// Remove existing adapter config directory if it exists
 	if _, err := os.Stat(destAdapterDir); err == nil {
-		logger.Info("removing existing adapter config directory", "path", destAdapterDir)
+		slog.Info("removing existing adapter config directory", "path", destAdapterDir)
 		if err := os.RemoveAll(destAdapterDir); err != nil {
 			return fmt.Errorf("failed to remove existing adapter config directory: %w", err)
 		}
 	}
 
 	// Copy adapter config directory to chart
-	logger.Info("copying adapter config", "from", sourceAdapterDir, "to", destAdapterDir)
+	slog.Info("copying adapter config", "from", sourceAdapterDir, "to", destAdapterDir)
 	if err := copyDir(sourceAdapterDir, destAdapterDir); err != nil {
 		return fmt.Errorf("failed to copy adapter config directory: %w", err)
 	}
@@ -181,7 +181,7 @@ func (h *Helper) DeployAdapter(ctx context.Context, opts AdapterDeploymentOption
 	}
 
 	// Expand environment variables in values.yaml in-place using envsubst
-	logger.Info("expanding environment variables in values.yaml in-place", "values_file", valuesFilePath)
+	slog.Info("expanding environment variables in values.yaml in-place", "values_file", valuesFilePath)
 
 	expandedContent, err := expandEnvVarsInYAMLToBytes(ctx, valuesFilePath, extraEnv)
 	if err != nil {
@@ -191,7 +191,7 @@ func (h *Helper) DeployAdapter(ctx context.Context, opts AdapterDeploymentOption
 		return fmt.Errorf("failed to overwrite values.yaml with expanded content: %w", err)
 	}
 
-	logger.Info("successfully expanded environment variables in values.yaml")
+	slog.Info("successfully expanded environment variables in values.yaml")
 
 	// Expand environment variables in adapter-config.yaml in-place using envsubst.
 	// This allows adapter configs to reference env vars like ${HYPERFLEET_API_URL}
@@ -205,7 +205,7 @@ func (h *Helper) DeployAdapter(ctx context.Context, opts AdapterDeploymentOption
 		if err := os.WriteFile(adapterConfigPath, expandedAdapterConfig, 0600); err != nil {
 			return fmt.Errorf("failed to overwrite adapter-config.yaml with expanded content: %w", err)
 		}
-		logger.Info("successfully expanded environment variables in adapter-config.yaml")
+		slog.Info("successfully expanded environment variables in adapter-config.yaml")
 	}
 
 	// Build Helm command with values file
@@ -227,7 +227,7 @@ func (h *Helper) DeployAdapter(ctx context.Context, opts AdapterDeploymentOption
 	// the base URL, e.g. to simulate an unreachable API)
 	helmArgs = append(helmArgs, h.adapterHelmSetArgs(releaseName, opts)...)
 
-	logger.Info("executing Helm command", "args", helmArgs)
+	slog.Info("executing Helm command", "args", helmArgs)
 
 	// Create context with timeout
 	cmdCtx, cancel := context.WithTimeout(ctx, opts.Timeout+30*time.Second)
@@ -237,7 +237,7 @@ func (h *Helper) DeployAdapter(ctx context.Context, opts AdapterDeploymentOption
 	cmd := exec.CommandContext(cmdCtx, "helm", helmArgs...) // #nosec G204 -- helmArgs is constructed from trusted config
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		logger.Error("helm upgrade failed", "error", err, "output", string(output))
+		slog.Error("helm upgrade failed", "error", err, "output", string(output))
 
 		// Collect diagnostic information when deployment fails
 		h.saveDiagnosticLogs(ctx, opts.AdapterName, releaseName, opts.Namespace)
@@ -252,7 +252,7 @@ func (h *Helper) DeployAdapter(ctx context.Context, opts AdapterDeploymentOption
 		ResourceType: opts.ResourceType,
 	})
 
-	logger.Info("adapter deployed successfully",
+	slog.Info("adapter deployed successfully",
 		"release_name", releaseName,
 		"output", string(output))
 
@@ -293,7 +293,7 @@ func (h *Helper) adapterHelmSetArgs(releaseName string, opts AdapterDeploymentOp
 // UninstallAdapter uninstalls an adapter using Helm uninstall
 // This is a common function that can be reused across test cases
 func (h *Helper) UninstallAdapter(ctx context.Context, releaseName, namespace string) error {
-	logger.Info("uninstalling adapter via Helm",
+	slog.Info("uninstalling adapter via Helm",
 		"release_name", releaseName,
 		"namespace", namespace)
 
@@ -311,17 +311,17 @@ func (h *Helper) UninstallAdapter(ctx context.Context, releaseName, namespace st
 	if err != nil {
 		// Check if the error is because the release doesn't exist
 		if strings.Contains(string(output), "not found") {
-			logger.Info("adapter release not found, skipping uninstall", "release_name", releaseName)
+			slog.Info("adapter release not found, skipping uninstall", "release_name", releaseName)
 			// Clean up orphaned cluster-scoped resources even when release is not found
 			// This handles cases like interrupted installs or manual deletions
 			h.cleanupClusterScopedResources(ctx, releaseName)
 			return nil
 		}
-		logger.Error("helm uninstall failed", "error", err, "output", string(output))
+		slog.Error("helm uninstall failed", "error", err, "output", string(output))
 		return fmt.Errorf("helm uninstall failed: %w (output: %s)", err, string(output))
 	}
 
-	logger.Info("adapter uninstalled successfully",
+	slog.Info("adapter uninstalled successfully",
 		"release_name", releaseName,
 		"output", string(output))
 
@@ -346,11 +346,11 @@ func (h *Helper) cleanupClusterScopedResources(ctx context.Context, releaseName 
 		"-l", labelSelector,
 		"--ignore-not-found=true")
 	if output, err := clusterRoleCmd.CombinedOutput(); err != nil {
-		logger.Info("could not delete ClusterRole (may not exist)",
+		slog.Info("could not delete ClusterRole (may not exist)",
 			"release_name", releaseName,
 			"output", string(output))
 	} else {
-		logger.Info("cleaned up ClusterRole", "release_name", releaseName)
+		slog.Info("cleaned up ClusterRole", "release_name", releaseName)
 	}
 
 	// Try to delete ClusterRoleBinding
@@ -358,11 +358,11 @@ func (h *Helper) cleanupClusterScopedResources(ctx context.Context, releaseName 
 		"-l", labelSelector,
 		"--ignore-not-found=true")
 	if output, err := clusterRoleBindingCmd.CombinedOutput(); err != nil {
-		logger.Info("could not delete ClusterRoleBinding (may not exist)",
+		slog.Info("could not delete ClusterRoleBinding (may not exist)",
 			"release_name", releaseName,
 			"output", string(output))
 	} else {
-		logger.Info("cleaned up ClusterRoleBinding", "release_name", releaseName)
+		slog.Info("cleaned up ClusterRoleBinding", "release_name", releaseName)
 	}
 }
 
@@ -376,13 +376,13 @@ func (h *Helper) saveDiagnosticLogs(ctx context.Context, adapterName, releaseNam
 
 	// Create output directory
 	if err := os.MkdirAll(outputDir, 0750); err != nil {
-		logger.Error("failed to create diagnostic output directory",
+		slog.Error("failed to create diagnostic output directory",
 			"error", err,
 			"output_dir", outputDir)
 		return
 	}
 
-	logger.Info("saving diagnostic logs",
+	slog.Info("saving diagnostic logs",
 		"adapter_name", adapterName,
 		"release_name", releaseName,
 		"namespace", namespace,
@@ -396,16 +396,16 @@ func (h *Helper) saveDiagnosticLogs(ctx context.Context, adapterName, releaseNam
 		LabelSelector: fmt.Sprintf("app.kubernetes.io/instance=%s", releaseName),
 	})
 	if err != nil {
-		logger.Error("failed to list pods", "error", err)
+		slog.Error("failed to list pods", "error", err)
 		return
 	}
 
 	if len(pods.Items) == 0 {
-		logger.Info("no pods found for release", "release_name", releaseName)
+		slog.Info("no pods found for release", "release_name", releaseName)
 		return
 	}
 
-	logger.Info("found pods for release",
+	slog.Info("found pods for release",
 		"total_pods", len(pods.Items),
 		"release_name", releaseName)
 
@@ -424,12 +424,12 @@ func (h *Helper) saveDiagnosticLogs(ctx context.Context, adapterName, releaseNam
 
 		// Skip healthy pods
 		if isHealthy {
-			logger.Info("skipping healthy pod", "pod", pod.Name)
+			slog.Info("skipping healthy pod", "pod", pod.Name)
 			continue
 		}
 
 		podName := pod.Name
-		logger.Info("saving logs for unhealthy pod",
+		slog.Info("saving logs for unhealthy pod",
 			"pod", podName,
 			"phase", pod.Status.Phase)
 
@@ -451,11 +451,11 @@ func (h *Helper) saveDiagnosticLogs(ctx context.Context, adapterName, releaseNam
 		}
 
 		if err := os.WriteFile(podLogFile, []byte(logContent), 0600); err != nil {
-			logger.Error("failed to write pod log file",
+			slog.Error("failed to write pod log file",
 				"pod", podName,
 				"error", err)
 		} else {
-			logger.Info("saved pod logs",
+			slog.Info("saved pod logs",
 				"pod", podName,
 				"file", podLogFile)
 		}
@@ -477,17 +477,17 @@ func (h *Helper) saveDiagnosticLogs(ctx context.Context, adapterName, releaseNam
 		}
 
 		if err := os.WriteFile(podDescFile, []byte(descContent), 0600); err != nil {
-			logger.Error("failed to write pod description file",
+			slog.Error("failed to write pod description file",
 				"pod", podName,
 				"error", err)
 		} else {
-			logger.Info("saved pod description",
+			slog.Info("saved pod description",
 				"pod", podName,
 				"file", podDescFile)
 		}
 	}
 
-	logger.Info("diagnostic logs saved successfully", "output_dir", outputDir)
+	slog.Info("diagnostic logs saved successfully", "output_dir", outputDir)
 }
 
 // expandEnvVarsInYAMLToBytes expands environment variables in a YAML file using envsubst
@@ -556,7 +556,7 @@ func (h *Helper) purgeRabbitMQQueue(ctx context.Context, adapterName string) err
 	)
 
 	queueName := fmt.Sprintf("%s-clusters-%s-%s", h.Cfg.Namespace, adapterName, brokerSubscriptionID)
-	logger.Info("purging RabbitMQ adapter queue", "queue", queueName, "adapter", adapterName)
+	slog.Info("purging RabbitMQ adapter queue", "queue", queueName, "adapter", adapterName)
 
 	cmdCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
@@ -565,11 +565,11 @@ func (h *Helper) purgeRabbitMQQueue(ctx context.Context, adapterName string) err
 		LabelSelector: fmt.Sprintf("%s=%s", rabbitMQPodLabelKey, rabbitMQPodLabelVal),
 	})
 	if err != nil {
-		logger.Error("failed to list RabbitMQ pods", "namespace", rabbitMQNamespace, "error", err)
+		slog.Error("failed to list RabbitMQ pods", "namespace", rabbitMQNamespace, "error", err)
 		return fmt.Errorf("failed to list RabbitMQ pods in namespace %q: %w", rabbitMQNamespace, err)
 	}
 	if len(pods.Items) == 0 {
-		logger.Info("no RabbitMQ pods found, skipping queue purge", "namespace", rabbitMQNamespace)
+		slog.Info("no RabbitMQ pods found, skipping queue purge", "namespace", rabbitMQNamespace)
 		return nil
 	}
 
@@ -581,13 +581,13 @@ func (h *Helper) purgeRabbitMQQueue(ctx context.Context, adapterName string) err
 	if err != nil {
 		outputStr := string(output)
 		if strings.Contains(outputStr, "not_found") || strings.Contains(outputStr, "does not exist") {
-			logger.Info("queue not found, nothing to purge", "queue", queueName)
+			slog.Info("queue not found, nothing to purge", "queue", queueName)
 			return nil
 		}
 		return fmt.Errorf("failed to purge RabbitMQ queue %s: %w (output: %s)", queueName, err, outputStr)
 	}
 
-	logger.Info("RabbitMQ queue purged successfully", "queue", queueName)
+	slog.Info("RabbitMQ queue purged successfully", "queue", queueName)
 	return nil
 }
 
@@ -604,7 +604,7 @@ var newPubSubDeleteFunc = func(ctx context.Context, projectID, subID string) (fu
 	}
 	return deleteFn, func() {
 		if err := client.Close(); err != nil {
-			logger.Info("failed to close Pub/Sub admin client", "error", err)
+			slog.Error("failed to close Pub/Sub admin client", "error", err)
 		}
 	}, nil
 }
@@ -612,7 +612,7 @@ var newPubSubDeleteFunc = func(ctx context.Context, projectID, subID string) (fu
 // DeletePubSubResourcesForAdapter deletes Pub/Sub subscription and dlq topic for a given adapter.
 func (h *Helper) DeletePubSubResourcesForAdapter(ctx context.Context, adapterName string, resourceType string) error {
 	if h.Cfg.BrokerType != "googlepubsub" {
-		logger.Info("skipping Pub/Sub subscription and topic deletion for non-Google Pub/Sub adapter", "adapter", adapterName)
+		slog.Info("skipping Pub/Sub subscription and topic deletion for non-Google Pub/Sub adapter", "adapter", adapterName)
 		return nil
 	}
 
@@ -631,7 +631,7 @@ func (h *Helper) DeletePubSubResourcesForAdapter(ctx context.Context, adapterNam
 	if len(errorList) > 0 {
 		return fmt.Errorf("failed to delete some Pub/Sub resources for adapter %s: %s", adapterName, strings.Join(errorList, ", "))
 	}
-	logger.Info("deleted Pub/Sub resources for adapter", "adapter", adapterName)
+	slog.Info("deleted Pub/Sub resources for adapter", "adapter", adapterName)
 	return nil
 }
 
@@ -642,7 +642,7 @@ func DeletePubSubSubscription(ctx context.Context, subscriptionID string, projec
 		projectID = defaultGCPProjectID
 	}
 
-	logger.Info("deleting Pub/Sub subscription",
+	slog.Info("deleting Pub/Sub subscription",
 		"subscription", subscriptionID,
 		"project", projectID)
 
@@ -654,17 +654,17 @@ func DeletePubSubSubscription(ctx context.Context, subscriptionID string, projec
 
 	if err := deleteFn(ctx); err != nil {
 		if status.Code(err) == codes.NotFound {
-			logger.Info("Pub/Sub subscription not found, skipping deletion", "subscription", subscriptionID)
+			slog.Info("Pub/Sub subscription not found, skipping deletion", "subscription", subscriptionID)
 			return nil
 		}
-		logger.Error("failed to delete Pub/Sub subscription",
+		slog.Error("failed to delete Pub/Sub subscription",
 			"subscription", subscriptionID,
 			"project", projectID,
 			"error", err)
 		return fmt.Errorf("failed to delete Pub/Sub subscription %s: %w", subscriptionID, err)
 	}
 
-	logger.Info("Pub/Sub subscription deleted successfully", "subscription", subscriptionID)
+	slog.Info("Pub/Sub subscription deleted successfully", "subscription", subscriptionID)
 	return nil
 }
 
@@ -681,7 +681,7 @@ var newPubSubTopicDeleteFunc = func(ctx context.Context, projectID, topicID stri
 	}
 	return deleteFn, func() {
 		if err := client.Close(); err != nil {
-			logger.Info("failed to close Pub/Sub topic admin client", "error", err)
+			slog.Error("failed to close Pub/Sub topic admin client", "error", err)
 		}
 	}, nil
 }
@@ -693,7 +693,7 @@ func DeletePubSubTopic(ctx context.Context, topicID string, projectID string) er
 		projectID = defaultGCPProjectID
 	}
 
-	logger.Info("deleting Pub/Sub topic",
+	slog.Info("deleting Pub/Sub topic",
 		"topic", topicID,
 		"project", projectID)
 
@@ -705,17 +705,17 @@ func DeletePubSubTopic(ctx context.Context, topicID string, projectID string) er
 
 	if err := deleteFn(ctx); err != nil {
 		if status.Code(err) == codes.NotFound {
-			logger.Info("Pub/Sub topic not found, skipping deletion", "topic", topicID)
+			slog.Info("Pub/Sub topic not found, skipping deletion", "topic", topicID)
 			return nil
 		}
-		logger.Error("failed to delete Pub/Sub topic",
+		slog.Error("failed to delete Pub/Sub topic",
 			"topic", topicID,
 			"project", projectID,
 			"error", err)
 		return fmt.Errorf("failed to delete Pub/Sub topic %s: %w", topicID, err)
 	}
 
-	logger.Info("Pub/Sub topic deleted successfully", "topic", topicID)
+	slog.Info("Pub/Sub topic deleted successfully", "topic", topicID)
 	return nil
 }
 

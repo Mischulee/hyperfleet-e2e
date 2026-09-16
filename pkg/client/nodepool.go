@@ -6,17 +6,17 @@ import (
 
 	"github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/util"
 
-	"github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/logger"
+	"log/slog"
 )
 
 // CreateNodePool creates a new nodepool for the specified cluster.
 func (c *HyperFleetClient) CreateNodePool(ctx context.Context, clusterID string, req ResourceCreateRequest) (*Resource, error) {
-	logger.Info("creating nodepool", "cluster_id", clusterID, "name", req.Name)
+	slog.Info("creating nodepool", "cluster_id", clusterID, "name", req.Name)
 	np, err := c.CreateResource(ctx, ClustersPath+"/"+clusterID+"/"+NodepoolsPath, req)
 	if err != nil {
 		return nil, fmt.Errorf("create nodepool %q in cluster %s: %w", req.Name, clusterID, err)
 	}
-	logger.Info("nodepool created", "cluster_id", clusterID, "nodepool_id", util.FromPtr(np.Id), "name", req.Name)
+	slog.Info("nodepool created", "cluster_id", clusterID, "nodepool_id", util.FromPtr(np.Id), "name", req.Name)
 	return np, nil
 }
 
@@ -32,12 +32,12 @@ func (c *HyperFleetClient) ListNodePools(ctx context.Context, clusterID string) 
 
 // PatchNodePool updates a nodepool via PATCH.
 func (c *HyperFleetClient) PatchNodePool(ctx context.Context, clusterID, nodepoolID string, req ResourcePatchRequest) (*Resource, error) {
-	logger.Info("patching nodepool", "cluster_id", clusterID, "nodepool_id", nodepoolID)
+	slog.Info("patching nodepool", "cluster_id", clusterID, "nodepool_id", nodepoolID)
 	np, err := c.PatchResource(ctx, ClustersPath+"/"+clusterID+"/"+NodepoolsPath+"/"+nodepoolID, req)
 	if err != nil {
 		return nil, fmt.Errorf("patch nodepool %s in cluster %s: %w", nodepoolID, clusterID, err)
 	}
-	logger.Info("nodepool patched", "cluster_id", clusterID, "nodepool_id", nodepoolID, "generation", np.Generation)
+	slog.Info("nodepool patched", "cluster_id", clusterID, "nodepool_id", nodepoolID, "generation", np.Generation)
 	return np, nil
 }
 
@@ -48,12 +48,12 @@ func (c *HyperFleetClient) PatchNodePoolFromPayload(ctx context.Context, cluster
 
 // DeleteNodePool soft-deletes a nodepool by ID (sets deleted_time, returns 202).
 func (c *HyperFleetClient) DeleteNodePool(ctx context.Context, clusterID, nodepoolID string) (*Resource, error) {
-	logger.Info("deleting nodepool", "cluster_id", clusterID, "nodepool_id", nodepoolID)
+	slog.Info("deleting nodepool", "cluster_id", clusterID, "nodepool_id", nodepoolID)
 	np, err := c.DeleteResource(ctx, ClustersPath+"/"+clusterID+"/"+NodepoolsPath+"/"+nodepoolID)
 	if err != nil {
 		return nil, fmt.Errorf("delete nodepool %s in cluster %s: %w", nodepoolID, clusterID, err)
 	}
-	logger.Info("nodepool deleted", "cluster_id", clusterID, "nodepool_id", nodepoolID)
+	slog.Info("nodepool deleted", "cluster_id", clusterID, "nodepool_id", nodepoolID)
 	return np, nil
 }
 
@@ -69,10 +69,10 @@ func (c *HyperFleetClient) GetNodePoolStatuses(ctx context.Context, clusterID, n
 
 // ForceDeleteNodePool permanently removes a nodepool stuck in Finalizing from the database.
 func (c *HyperFleetClient) ForceDeleteNodePool(ctx context.Context, clusterID, nodepoolID, reason string) error {
-	logger.Info("force-deleting nodepool", "cluster_id", clusterID, "nodepool_id", nodepoolID, "reason", reason)
+	slog.Info("force-deleting nodepool", "cluster_id", clusterID, "nodepool_id", nodepoolID, "reason", reason)
 	if err := c.ForceDeleteResource(ctx, ClustersPath+"/"+clusterID+"/"+NodepoolsPath+"/"+nodepoolID, reason); err != nil {
 		return fmt.Errorf("force-delete nodepool %s in cluster %s: %w", nodepoolID, clusterID, err)
 	}
-	logger.Info("nodepool force-deleted", "cluster_id", clusterID, "nodepool_id", nodepoolID)
+	slog.Info("nodepool force-deleted", "cluster_id", clusterID, "nodepool_id", nodepoolID)
 	return nil
 }

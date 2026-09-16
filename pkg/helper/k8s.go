@@ -7,16 +7,16 @@ import (
 	"strings"
 
 	k8sclient "github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/client/kubernetes"
-	"github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/logger"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"log/slog"
 )
 
 // VerifyNamespaceActive verifies a namespace exists and is in Active phase
 func (h *Helper) VerifyNamespaceActive(ctx context.Context, name string, expectedLabels, expectedAnnotations map[string]string) error {
-	logger.Info("verifying namespace status", "namespace", name)
+	slog.Info("verifying namespace status", "namespace", name)
 
 	// Fetch namespace
 	ns, err := h.K8sClient.FetchNamespace(ctx, name)
@@ -39,7 +39,7 @@ func (h *Helper) VerifyNamespaceActive(ctx context.Context, name string, expecte
 		return fmt.Errorf("namespace %s: %w", name, err)
 	}
 
-	logger.Info("namespace verified successfully", "namespace", name, "phase", ns.Status.Phase)
+	slog.Info("namespace verified successfully", "namespace", name, "phase", ns.Status.Phase)
 	return nil
 }
 
@@ -48,7 +48,7 @@ func (h *Helper) VerifyNamespaceActive(ctx context.Context, name string, expecte
 // it's guaranteed to have those labels (no need to verify them again).
 func (h *Helper) VerifyJobComplete(ctx context.Context, namespace string, expectedLabels, expectedAnnotations map[string]string) error {
 	labelSelector := labels.SelectorFromSet(expectedLabels).String()
-	logger.Info("verifying job status", "namespace", namespace, "label_selector", labelSelector)
+	slog.Info("verifying job status", "namespace", namespace, "label_selector", labelSelector)
 
 	// Get job (handles uniqueness validation internally)
 	job, err := h.K8sClient.GetUniqueJobByLabels(ctx, namespace, expectedLabels)
@@ -67,7 +67,7 @@ func (h *Helper) VerifyJobComplete(ctx context.Context, namespace string, expect
 		return fmt.Errorf("job %s in namespace %s: %w", job.Name, namespace, err)
 	}
 
-	logger.Info("job verified successfully",
+	slog.Info("job verified successfully",
 		"namespace", namespace,
 		"job", job.Name,
 		"succeeded", job.Status.Succeeded,
@@ -81,7 +81,7 @@ func (h *Helper) VerifyJobComplete(ctx context.Context, namespace string, expect
 // it's guaranteed to have those labels (no need to verify them again).
 func (h *Helper) VerifyDeploymentAvailable(ctx context.Context, namespace string, expectedLabels, expectedAnnotations map[string]string) error {
 	labelSelector := labels.SelectorFromSet(expectedLabels).String()
-	logger.Info("verifying deployment status", "namespace", namespace, "label_selector", labelSelector)
+	slog.Info("verifying deployment status", "namespace", namespace, "label_selector", labelSelector)
 
 	// Get deployment (handles uniqueness validation internally)
 	deploy, err := h.K8sClient.GetUniqueDeploymentByLabels(ctx, namespace, expectedLabels)
@@ -100,7 +100,7 @@ func (h *Helper) VerifyDeploymentAvailable(ctx context.Context, namespace string
 		return fmt.Errorf("deployment %s in namespace %s: %w", deploy.Name, namespace, err)
 	}
 
-	logger.Info("deployment verified successfully",
+	slog.Info("deployment verified successfully",
 		"namespace", namespace,
 		"deployment", deploy.Name,
 		"available_replicas", deploy.Status.AvailableReplicas)
@@ -112,7 +112,7 @@ func (h *Helper) VerifyDeploymentAvailable(ctx context.Context, namespace string
 // it's guaranteed to have those labels (no need to verify them again).
 func (h *Helper) VerifyConfigMap(ctx context.Context, namespace string, expectedLabels, expectedAnnotations map[string]string) error {
 	labelSelector := labels.SelectorFromSet(expectedLabels).String()
-	logger.Info("verifying configmap status", "namespace", namespace, "label_selector", labelSelector)
+	slog.Info("verifying configmap status", "namespace", namespace, "label_selector", labelSelector)
 
 	// Get configmap (handles uniqueness validation internally)
 	cm, err := h.K8sClient.GetUniqueConfigMapByLabels(ctx, namespace, expectedLabels)
@@ -125,7 +125,7 @@ func (h *Helper) VerifyConfigMap(ctx context.Context, namespace string, expected
 		return fmt.Errorf("configmap %s in namespace %s: %w", cm.Name, namespace, err)
 	}
 
-	logger.Info("configmap verified successfully",
+	slog.Info("configmap verified successfully",
 		"namespace", namespace,
 		"configmap", cm.Name)
 	return nil
@@ -134,14 +134,14 @@ func (h *Helper) VerifyConfigMap(ctx context.Context, namespace string, expected
 // GetNamespace retrieves a namespace by name.
 // Returns the Namespace object so you can check its labels, annotations, and status.
 func (h *Helper) GetNamespace(ctx context.Context, name string) (*corev1.Namespace, error) {
-	logger.Info("fetching namespace", "namespace", name)
+	slog.Info("fetching namespace", "namespace", name)
 
 	ns, err := h.K8sClient.FetchNamespace(ctx, name)
 	if err != nil {
 		return nil, err
 	}
 
-	logger.Info("namespace fetched successfully",
+	slog.Info("namespace fetched successfully",
 		"namespace", ns.Name,
 		"phase", ns.Status.Phase)
 	return ns, nil
@@ -150,14 +150,14 @@ func (h *Helper) GetNamespace(ctx context.Context, name string) (*corev1.Namespa
 // GetConfigMap retrieves a configmap by name from the specified namespace.
 // Returns the ConfigMap object so you can check its labels, annotations, and data.
 func (h *Helper) GetConfigMap(ctx context.Context, namespace, name string) (*corev1.ConfigMap, error) {
-	logger.Info("fetching configmap", "namespace", namespace, "name", name)
+	slog.Info("fetching configmap", "namespace", namespace, "name", name)
 
 	cm, err := h.K8sClient.FetchConfigMap(ctx, namespace, name)
 	if err != nil {
 		return nil, err
 	}
 
-	logger.Info("configmap fetched successfully",
+	slog.Info("configmap fetched successfully",
 		"namespace", namespace,
 		"name", cm.Name)
 	return cm, nil
@@ -165,49 +165,49 @@ func (h *Helper) GetConfigMap(ctx context.Context, namespace, name string) (*cor
 
 // ScaleDeployment scales a deployment to the specified number of replicas.
 func (h *Helper) ScaleDeployment(ctx context.Context, namespace, name string, replicas int32) error {
-	logger.Info("scaling deployment", "namespace", namespace, "name", name, "replicas", replicas)
+	slog.Info("scaling deployment", "namespace", namespace, "name", name, "replicas", replicas)
 
 	if err := h.K8sClient.ScaleDeployment(ctx, namespace, name, replicas); err != nil {
 		return err
 	}
 
-	logger.Info("deployment scaled successfully", "namespace", namespace, "name", name, "replicas", replicas)
+	slog.Info("deployment scaled successfully", "namespace", namespace, "name", name, "replicas", replicas)
 	return nil
 }
 
 // ScaleDeploymentBySelector scales all deployments matching label selector string to the specified number of replicas.
 func (h *Helper) ScaleDeploymentBySelector(ctx context.Context, namespace, selector string, replicas int32) error {
-	logger.Info("scaling deployment by selector", "namespace", namespace, "selector", selector, "replicas", replicas)
+	slog.Info("scaling deployment by selector", "namespace", namespace, "selector", selector, "replicas", replicas)
 
 	if err := h.K8sClient.ScaleDeploymentBySelector(ctx, namespace, selector, replicas); err != nil {
 		return fmt.Errorf("failed to scale deployment in namespace %s with selector %s: %w", namespace, selector, err)
 	}
 
-	logger.Info("deployment scaled successfully by selector", "namespace", namespace, "selector", selector, "replicas", replicas)
+	slog.Info("deployment scaled successfully by selector", "namespace", namespace, "selector", selector, "replicas", replicas)
 	return nil
 }
 
 // EnsureServiceAccount creates a ServiceAccount if it doesn't already exist.
 func (h *Helper) EnsureServiceAccount(ctx context.Context, namespace, name string) error {
-	logger.Info("ensuring service account exists", "namespace", namespace, "name", name)
+	slog.Info("ensuring service account exists", "namespace", namespace, "name", name)
 
 	if err := h.K8sClient.EnsureServiceAccount(ctx, namespace, name); err != nil {
 		return fmt.Errorf("ensure service account %s/%s: %w", namespace, name, err)
 	}
 
-	logger.Info("service account ensured", "namespace", namespace, "name", name)
+	slog.Info("service account ensured", "namespace", namespace, "name", name)
 	return nil
 }
 
 // DeleteServiceAccount deletes a ServiceAccount.
 func (h *Helper) DeleteServiceAccount(ctx context.Context, namespace, name string) error {
-	logger.Info("deleting service account", "namespace", namespace, "name", name)
+	slog.Info("deleting service account", "namespace", namespace, "name", name)
 
 	if err := h.K8sClient.DeleteServiceAccount(ctx, namespace, name); err != nil {
 		return fmt.Errorf("delete service account %s/%s: %w", namespace, name, err)
 	}
 
-	logger.Info("service account deleted", "namespace", namespace, "name", name)
+	slog.Info("service account deleted", "namespace", namespace, "name", name)
 	return nil
 }
 

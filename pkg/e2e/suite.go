@@ -2,13 +2,13 @@ package e2e
 
 import (
 	"log"
+	"log/slog"
 
 	"github.com/onsi/ginkgo/v2"
 
 	k8sclient "github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/client/kubernetes"
 	"github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/config"
 	"github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/helper"
-	"github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/logger"
 )
 
 var (
@@ -63,18 +63,18 @@ var _ = ginkgo.SynchronizedBeforeSuite(
 			log.Fatalf("Suite config not initialized")
 		}
 
-		if err := logger.Init(&cfg.Log, "dev"); err != nil {
+		if err := initLogging(&cfg.Log); err != nil {
 			log.Fatalf("Failed to initialize logger: %v", err)
 		}
 
 		if ginkgo.GinkgoParallelProcess() == 1 {
 			cfg.Display()
 		}
-		logger.Info("starting hyperfleet-e2e test suite - creating resources with", "run-id", cfg.RunID)
+		slog.Info("starting hyperfleet-e2e test suite - creating resources with", "run-id", cfg.RunID)
 
 		if len(tokenBytes) > 0 {
 			cfg.Identity.SetToken(string(tokenBytes))
-			logger.Info("acquired JWT for suite",
+			slog.Info("acquired JWT for suite",
 				"service-account", cfg.Identity.TokenRequest.Namespace+"/"+cfg.Identity.TokenRequest.ServiceAccountName,
 				"audience", cfg.Identity.TokenRequest.Audience,
 				"expires-seconds", cfg.Identity.TokenRequest.ExpirationSeconds)
@@ -84,7 +84,7 @@ var _ = ginkgo.SynchronizedBeforeSuite(
 		adapterDeploymentList := helper.InitAdapterDeploymentList()
 		helper.SetAdapterDeploymentList(adapterDeploymentList)
 
-		logger.Info("starting hyperfleet-e2e test suite - each test creates temporary resources")
+		slog.Info("starting hyperfleet-e2e test suite - each test creates temporary resources")
 	},
 )
 
@@ -100,6 +100,6 @@ var _ = ginkgo.SynchronizedAfterSuite(
 	func() {
 		helper.CleanupKubeResources()
 		helper.ClearSuiteConfig()
-		logger.Info("test suite completed")
+		slog.Info("test suite completed")
 	},
 )
