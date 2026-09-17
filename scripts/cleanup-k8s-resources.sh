@@ -177,7 +177,17 @@ uninstall_hyperfleet_releases() {
     log_section "Uninstalling Helm Releases"
 
     local releases
-    releases=$(jq -r '.[] | select(.labels | contains("group:hyperfleet")) | "\(.name) \(.namespace)"' "$json_file")
+    releases=$(jq -r '
+        .[]
+        | select(.installed != false)
+        | select(
+            ((.labels // "")
+                | split(",")
+                | map(gsub("^\\s+|\\s+$"; ""))
+                | index("group:hyperfleet")) != null
+        )
+        | "\(.name) \(.namespace)"
+    ' "$json_file")
 
     if [[ -z "$releases" ]]; then
         log_info "No Helm releases found with label group:hyperfleet"
