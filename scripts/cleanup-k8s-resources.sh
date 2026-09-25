@@ -96,10 +96,10 @@ if [[ -z "$NAMESPACE" ]]; then
     usage 1
 fi
 
-# Validate JSON file if provided
-if [[ -n "$JSON_FILE" ]] && [[ ! -f "$JSON_FILE" ]]; then
-    log_error "File '$JSON_FILE' not found"
-    exit 1
+# Missing or empty file likely means setup failed before writing it; fall back to
+# best-effort cleanup
+if [[ -n "$JSON_FILE" ]] && [[ ! -s "$JSON_FILE" ]]; then
+    log_warning "JSON file '$JSON_FILE' missing or empty; falling back to best-effort cleanup via helm list"
 fi
 
 # ============================================================================
@@ -130,9 +130,18 @@ uninstall_hyperfleet_releases_best_effort() {
     log_section "Best-Effort Helm Release Cleanup"
     log_warning "JSON file not available, attempting cleanup using helm list"
 
-    # List all releases in the namespace
+    # List all releases in the namespace including non-deployed ones
+    local list_flags=(-n "${namespace}" --short --deployed --failed --pending --superseded --uninstalling)
     local releases
-    releases=$(helm list -n "${namespace}" --short 2>/dev/null || true)
+    local list_status=0
+    releases=$(helm list "${list_flags[@]}" 2>/dev/null) || list_status=$?
+
+    if [[ ${list_status} -ne 0 ]]; then
+        local list_error
+        list_error=$(helm list "${list_flags[@]}" 2>&1 1>/dev/null)
+        log_error "Failed to list Helm releases in namespace ${namespace}: ${list_error}"
+        return 1
+    fi
 
     if [[ -z "$releases" ]]; then
         log_info "No Helm releases found in namespace ${namespace}"
@@ -177,6 +186,7 @@ uninstall_hyperfleet_releases() {
     log_section "Uninstalling Helm Releases"
 
     local releases
+    local jq_status=0
     releases=$(jq -r '
         .[]
         | select(.installed != false)
@@ -187,7 +197,12 @@ uninstall_hyperfleet_releases() {
                 | index("group:hyperfleet")) != null
         )
         | "\(.name) \(.namespace)"
-    ' "$json_file")
+    ' "$json_file" 2>&1) || jq_status=$?
+
+    if [[ ${jq_status} -ne 0 ]]; then
+        log_error "Failed to parse Helm releases from ${json_file}: ${releases}"
+        return 1
+    fi
 
     if [[ -z "$releases" ]]; then
         log_info "No Helm releases found with label group:hyperfleet"
@@ -237,9 +252,18 @@ delete_namespace() {
         return 0
     fi
 
-    if ! kubectl get namespace "${namespace}" &> /dev/null; then
-        log_warning "Namespace '${namespace}' does not exist"
-        return 0
+    local get_output
+    local get_status=0
+    get_output=$(kubectl get namespace "${namespace}" 2>&1) || get_status=$?
+
+    if [[ ${get_status} -ne 0 ]]; then
+        # Only treat a NotFound as absence, not other kubectl errors
+        if [[ "${get_output}" == *"(NotFound)"* ]]; then
+            log_warning "Namespace '${namespace}' does not exist"
+            return 0
+        fi
+        log_error "Failed to check namespace '${namespace}': ${get_output}"
+        return 1
     fi
 
     log_info "Deleting namespace: ${namespace}"
@@ -264,26 +288,36 @@ main() {
     log_info "Dry Run: ${DRY_RUN}"
 
     local exit_code=0
+    local release_cleanup_ok=true
 
     if ! check_dependencies; then
         exit 1
     fi
 
     # Uninstall Helm releases
-    if [[ -n "$JSON_FILE" ]] && [[ -f "$JSON_FILE" ]]; then
+    if [[ -n "$JSON_FILE" ]] && [[ -s "$JSON_FILE" ]]; then
         uninstall_hyperfleet_releases "${JSON_FILE}" || exit_code=$?
+    elif [[ -n "$JSON_FILE" ]]; then
+        # Failures here are non-fatal: namespace delete below cleans up everything
+        uninstall_hyperfleet_releases_best_effort "${NAMESPACE}" || release_cleanup_ok=false
     else
+        # No -f: deliberate best-effort mode
         uninstall_hyperfleet_releases_best_effort "${NAMESPACE}" || exit_code=$?
     fi
 
     # Delete namespace
-    delete_namespace "${NAMESPACE}" || exit_code=$?
+    local namespace_deleted=true
+    delete_namespace "${NAMESPACE}" || { exit_code=$?; namespace_deleted=false; }
 
     log_section "Cleanup Complete"
-    if [[ ${exit_code} -eq 0 ]]; then
+    if [[ ${exit_code} -eq 0 ]] && [[ "${release_cleanup_ok}" == true ]]; then
         log_success "All cleanup operations completed successfully"
+    elif [[ "${namespace_deleted}" == false ]]; then
+        log_error "Cleanup completed with errors (exit code ${exit_code}); namespace '${NAMESPACE}' may require manual intervention"
+    elif [[ ${exit_code} -ne 0 ]]; then
+        log_error "Cleanup completed with errors (exit code ${exit_code}); namespace '${NAMESPACE}' was deleted but some releases failed to uninstall"
     else
-        log_warning "Cleanup completed with errors"
+        log_warning "Namespace '${NAMESPACE}' was deleted, but some releases failed to uninstall during best-effort cleanup"
     fi
 
     exit ${exit_code}
