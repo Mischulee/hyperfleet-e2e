@@ -134,6 +134,15 @@ var Log = struct {
 	Output: "log.output",
 }
 
+// Desire config keys
+var Desire = struct {
+	// Adapter is the cluster adapter that delivers through the desire store; see DesireConfig.Adapter
+	// Env: HYPERFLEET_DESIRE_ADAPTER
+	Adapter string
+}{
+	Adapter: "desire.adapter",
+}
+
 // AdaptersConfig contains required adapters for each resource type
 type AdaptersConfig struct {
 	Cluster  []string `yaml:"cluster" mapstructure:"cluster"`   // Required adapters for cluster resources
@@ -192,6 +201,19 @@ func (c *IdentityConfig) SetToken(t string) {
 	c.token = t
 }
 
+// DesireConfig contains settings for suites that run on desire delivery
+// (adapter -> desire store -> applier) instead of Maestro.
+type DesireConfig struct {
+	// Adapter is the name of the one cluster adapter the desire stack deploys, on a remote
+	// transport. The tier stack deploys the Maestro adapter set (Adapters.Cluster, for
+	// example cl-namespace and cl-job), and the desire stack deploys none of them, so the
+	// desire-transport suite cannot use Adapters.Cluster. It uses this name to find the
+	// adapter's Deployment and adapter-config ConfigMap and to read its status from the API.
+	// The default matches the name hyperfleet-infra gives the adapter; change it only when
+	// the stack deploys the adapter under another name.
+	Adapter string `yaml:"adapter" mapstructure:"adapter"`
+}
+
 // Config represents the e2e test configuration
 type Config struct {
 	Namespace         string                  `yaml:"namespace" mapstructure:"namespace"`
@@ -208,6 +230,7 @@ type Config struct {
 	APIDeployment     APIDeploymentConfig     `yaml:"apiDeployment" mapstructure:"apiDeployment"`
 	BrokerType        string                  `yaml:"brokerType" mapstructure:"brokerType"`
 	Identity          IdentityConfig          `yaml:"identity" mapstructure:"identity"`
+	Desire            DesireConfig            `yaml:"desire" mapstructure:"desire"`
 }
 
 // APIConfig contains API-related configuration
@@ -322,6 +345,11 @@ func applyViperValues(v reflect.Value, prefix string) {
 			if viper.IsSet(configPath) {
 				field.SetBool(viper.GetBool(configPath))
 			}
+		case reflect.Pointer:
+			// *bool distinguishes "unset" (nil, default applies) from an explicit false
+			if field.Type().Elem().Kind() == reflect.Bool && viper.IsSet(configPath) {
+				field.Set(reflect.ValueOf(new(viper.GetBool(configPath))))
+			}
 		case reflect.Slice:
 			// Handle string slices
 			if field.Type().Elem().Kind() == reflect.String {
@@ -401,6 +429,10 @@ func (c *Config) applyDefaults() {
 	}
 	if c.Adapters.NodePool == nil {
 		c.Adapters.NodePool = DefaultNodePoolAdapters
+	}
+
+	if c.Desire.Adapter == "" {
+		c.Desire.Adapter = DefaultDesireAdapter
 	}
 
 	// Apply general configuration defaults from environment variables or config file
@@ -614,6 +646,7 @@ func (c *Config) Display() {
 		"identity_token_request_sa", valueOrNotSet(c.Identity.TokenRequest.ServiceAccountName),
 		"identity_token_request_ns", valueOrNotSet(c.Identity.TokenRequest.Namespace),
 		"identity_token_request_audience", valueOrNotSet(c.Identity.TokenRequest.Audience),
+		"desire_adapter", c.Desire.Adapter,
 	)
 }
 

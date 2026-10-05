@@ -17,6 +17,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 )
 
@@ -28,18 +29,25 @@ type DynamicClient struct {
 	dynamic.Interface
 }
 
-// NewClient initializes a Kubernetes clientset from kubeconfig
-func NewClient() (*Client, error) {
-	// Build config from KUBECONFIG env var or default ~/.kube/config
+// RESTConfig loads the REST config every e2e Kubernetes client uses: KUBECONFIG
+// or the default ~/.kube/config, with the e2e user agent for API server logs.
+func RESTConfig() (*rest.Config, error) {
 	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
 	config, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
 		loadingRules, &clientcmd.ConfigOverrides{}).ClientConfig()
 	if err != nil {
 		return nil, fmt.Errorf("failed to load kubeconfig: %w", err)
 	}
-
-	// Set user agent for observability in API server logs
 	config.UserAgent = "hyperfleet-e2e-tests"
+	return config, nil
+}
+
+// NewClient initializes a Kubernetes clientset from kubeconfig
+func NewClient() (*Client, error) {
+	config, err := RESTConfig()
+	if err != nil {
+		return nil, err
+	}
 
 	// Create clientset
 	clientset, err := kubernetes.NewForConfig(config)
@@ -51,14 +59,10 @@ func NewClient() (*Client, error) {
 }
 
 func NewDynamicClient() (*DynamicClient, error) {
-	// Build config from KUBECONFIG env var or default ~/.kube/config
-	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
-	config, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
-		loadingRules, &clientcmd.ConfigOverrides{}).ClientConfig()
+	config, err := RESTConfig()
 	if err != nil {
-		return nil, fmt.Errorf("failed to load kubeconfig: %w", err)
+		return nil, err
 	}
-	config.UserAgent = "hyperfleet-e2e-tests"
 	dynamicClient, err := dynamic.NewForConfig(config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create dynamic client: %w", err)

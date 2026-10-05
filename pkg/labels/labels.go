@@ -34,3 +34,10 @@ const (
 	Disruptive = "disruptive" // Destructive testing: fault injection
 	Slow       = "slow"       // Long-running: execution time exceeds 5-10 minutes
 )
+
+// Environment labels - Deployment dimension: the spec needs a stack that the tier jobs do not deploy.
+// A spec with an environment label carries no severity label, so no tier label filter selects it;
+// it runs only against a stack that deploys it, with a filter that names the label.
+const (
+	DesireTransport = "desire-transport" // Desire delivery: adapter -> desire store (Redis) -> applier, no Maestro
+)

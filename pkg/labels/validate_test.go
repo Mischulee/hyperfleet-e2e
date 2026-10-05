@@ -47,6 +47,41 @@ func TestAllE2ETestsHaveRequiredLabels(t *testing.T) {
 	}
 }
 
+func TestValidateLabels(t *testing.T) {
+	tests := []struct {
+		name    string
+		labels  []string
+		wantErr string
+	}{
+		{name: "severity only", labels: []string{labels.Tier0}},
+		{name: "severity with optional labels", labels: []string{labels.Tier2, labels.Negative, labels.Disruptive}},
+		{name: "no labels", labels: nil, wantErr: "missing severity label"},
+		{name: "optional labels without severity", labels: []string{labels.Negative}, wantErr: "missing severity label"},
+		{name: "environment label replaces severity", labels: []string{labels.DesireTransport}},
+		{name: "environment label with optional labels", labels: []string{labels.DesireTransport, labels.Slow}},
+		{
+			name:    "environment label combined with severity",
+			labels:  []string{labels.DesireTransport, labels.Tier0},
+			wantErr: `environment label "desire-transport" must not be combined with a severity label`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := labels.ValidateLabels(tt.labels)
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("ValidateLabels(%v) returned error: %v", tt.labels, err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("ValidateLabels(%v) error = %v, want it to contain %q", tt.labels, err, tt.wantErr)
+			}
+		})
+	}
+}
+
 // testSpec represents a Ginkgo test specification with its labels
 type testSpec struct {
 	Name   string   // Test name from ginkgo.Describe
@@ -219,6 +254,8 @@ func constantToLabelValue(constName string) string {
 		// Constraint
 		"Disruptive": labels.Disruptive,
 		"Slow":       labels.Slow,
+		// Environment
+		"DesireTransport": labels.DesireTransport,
 	}
 
 	return mapping[constName]
