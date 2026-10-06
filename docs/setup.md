@@ -7,6 +7,7 @@ This guide covers setting up a HyperFleet environment for running E2E tests loca
 - [Deployment Options](#deployment-options)
   - [Option 1: Kind (Local)](#option-1-kind-local)
   - [Option 2: GCP](#option-2-gcp)
+  - [Option 3: Kind with desire delivery (no Maestro)](#option-3-kind-with-desire-delivery-no-maestro)
 - [Configure Test Settings](#configure-test-settings)
 - [Troubleshooting](#troubleshooting)
 
@@ -23,6 +24,7 @@ Choose one of the following deployment options based on your needs:
 
 - **Kind (local):** Fast setup, no cloud dependencies, uses port-forwarding
 - **GCP:** Cloud environment, requires GCP access, slower setup, uses LoadBalancer services
+- **Kind with desire delivery:** Kind without Maestro, for the `desire-transport` suite only
 
 ### Option 1: Kind (Local)
 
@@ -117,6 +119,42 @@ kubectl get pods -n ${NAMESPACE}
 # Test API connectivity
 curl -f -X GET ${HYPERFLEET_API_URL}/api/hyperfleet/v1/clusters/
 ```
+
+### Option 3: Kind with desire delivery (no Maestro)
+
+Same as Option 1, except Redis and hyperfleet-applier replace Maestro. Use it only for the `desire-transport` suite ([test cases](../test-design/testcases/adapter-with-desire-transport.md)); the tier suites still need Option 1 or 2.
+
+**1. Deploy HyperFleet with desire delivery to a Kind cluster:**
+
+```bash
+NAMESPACE=<your-dev-namespace> HELMFILE_ENV=e2e-kind DESIRE_DELIVERY_ENABLED=true make local-up-kind
+```
+
+This deploys the API, the gateway, the Sentinels, one adapter `cl-desire`, Redis and the applier. Applier image and chart settings are in the [hyperfleet-infra README](https://github.com/openshift-hyperfleet/hyperfleet-infra/blob/main/README.md).
+
+**2. Port-forward the gateway:**
+
+```bash
+export API_LOCAL_PORT=8000
+kubectl port-forward -n ${NAMESPACE} svc/hyperfleet-gateway ${API_LOCAL_PORT}:8000
+```
+
+**3. Configure environment variables:**
+
+```bash
+export HYPERFLEET_API_URL=http://localhost:${API_LOCAL_PORT}
+export NAMESPACE=<your-dev-namespace>
+export RUN_ID=${NAMESPACE}
+```
+
+**4. Run the suite** (from the `hyperfleet-e2e` checkout, not `hyperfleet-infra`):
+
+```bash
+make build
+./bin/hyperfleet-e2e test --label-filter=desire-transport
+```
+
+At the end of the run, cleanup logs `failed to get resource bundles by run Id`. That is expected: the stack has no Maestro, and the rest of the cleanup still runs.
 
 ## Configure Test Settings
 

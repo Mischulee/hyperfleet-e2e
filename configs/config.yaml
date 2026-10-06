@@ -120,6 +120,17 @@ adapters:
     - "np-configmap"
 
 # ============================================================================
+# Delivery Path Configuration
+# ============================================================================
+
+desire:
+  # The only cluster adapter a desire stack deploys, on a remote transport. The
+  # desire-transport suite checks its Deployment, adapter config and status in
+  # place of adapters.cluster.
+  # Can be overridden by: HYPERFLEET_DESIRE_ADAPTER
+  adapter: "cl-desire"
+
+# ============================================================================
 # JWT Authentication Configuration
 # ============================================================================
 

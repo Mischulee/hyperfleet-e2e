@@ -1,149 +1,80 @@
 # HyperFleet E2E — Agent Instructions
 
-Black-box E2E testing framework for HyperFleet cluster lifecycle management. Tests hit the HyperFleet API, create ephemeral clusters, verify adapter execution and K8s resource creation, then clean up. Built with Go 1.26, Ginkgo v2, Gomega, and a hand-written generic HTTP client.
+<!--
+Maintainers: this file is loaded into every agent session (CLAUDE.md imports it), so every line costs context.
+- Keep it under 200 lines. For each line ask: "would removing this cause the agent to make a mistake?" If not, cut it.
+- Keep only what an agent cannot learn by reading the code: commands, non-obvious conventions, gotchas.
+  Do not list functions, files, or enum values here; they go stale. Point to the file instead.
+- Link to docs/ rather than copying from it.
+- Use IMPORTANT on one rule at most; when many lines are emphasized, none stands out.
+-->
 
-Test suites: `e2e/cluster/`, `e2e/nodepool/`, `e2e/adapter/`.
+Black-box E2E tests for HyperFleet. Specs call the HyperFleet API, create ephemeral resources, check adapter execution and the K8s resources that result, then clean up. Go 1.26, Ginkgo v2, Gomega, and the generic HTTP client in `pkg/client`.
+
+Spec suites live in `e2e/<suite>/`, one directory per suite. Each suite is registered by a blank import in `e2e/e2e.go`; add one there when you create a suite.
 
 ## Verification
 
-Run `make check` before declaring work done. It runs everything in order:
+Run `make check` before you call work done, then `make build`.
 
-| Target | What it does |
-|---|---|
-| `make check` | `generate` → `fmt-check` → `vet` → `lint` → `test` (all-in-one) |
-| `make build` | `generate` → compile binary to `bin/hyperfleet-e2e` |
-| `make fmt` | Format code and imports (`golangci-lint fmt`) |
-| `make test` | Unit tests only (`./pkg/...`) |
-| `make lint` | `golangci-lint` (pinned in `tools/go.mod`, config: `.golangci.yml`) |
-| `make generate` | No-op (reserved for future code generation) |
+- `make check`: `generate`, `fmt-check`, `vet`, `lint`, unit tests, `verify-tools` (fails if `tools/go.mod` drifted)
+- `make fmt`: `gofmt -s -w .`
+- `make lint`: golangci-lint pinned in `tools/go.mod`, configured in `.golangci.yml`
+- `make test`: unit tests for `./pkg/...` only. E2E specs need a live environment; see `docs/setup.md`
+- `make list-tests`: dry run that lists specs by tier. Use it to check labels and names without a cluster
 
-Pre-flight order: `make check` then `make build`.
+## Where to look
 
-## Source of Truth
+- Writing specs, full conventions: `docs/development.md`
+- Architecture and package layout: `docs/architecture.md`
+- Environment setup (kind, GCP, desire stack without Maestro): `docs/setup.md`
+- Running tests, Prow jobs, label-to-CI mapping: `docs/runbook.md`
+- CI failures and log locations: `docs/debugging.md`
+- Test case documents and templates: `test-design/` (start at `test-design/README.md`)
+- Which layer a test belongs in (unit / integration / E2E): [test placement strategy](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/docs/e2e-testing/test-placement-strategy.md)
+- Config defaults, struct, file: `pkg/config/defaults.go`, `pkg/config/config.go`, `configs/config.yaml`
+- Pollers and matchers: `pkg/helper/pollers.go`, `pkg/helper/matchers.go`. Reuse these before writing new ones
 
-| Topic | Location |
-|---|---|
-| Getting started | `docs/getting-started.md` |
-| Architecture | `docs/architecture.md` |
-| Test placement strategy | [architecture repo](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/docs/e2e-testing/test-placement-strategy.md) — which layer a test belongs in (unit / integration / E2E) |
-| Test writing guide | `docs/development.md` |
-| Debugging | `docs/debugging.md` (prow job mapping, CI troubleshooting, log locations) |
-| Local kind setup | `docs/local-kind-setup.md` |
-| Runbook | `docs/runbook.md` (prow job schedules, label-to-CI mapping, test execution) |
-| Contributing | `CONTRIBUTING.md` |
-| Test case templates | `test-design/templates/` |
-| Test case documents | `test-design/testcases/` |
-| User journey maps | `test-design/user-journeys/` |
-| Config defaults | `pkg/config/defaults.go` |
-| Config struct & validation | `pkg/config/config.go` |
-| Pollers | `pkg/helper/pollers.go` |
-| Custom matchers | `pkg/helper/matchers.go` |
-| Helper core (New, TestDataPath, CleanupTestCluster) | `pkg/helper/helper.go` + `pkg/helper/suite.go` |
-| Synchronous validators (HasResourceCondition, AdapterNameToConditionType) | `pkg/helper/validation.go` |
-| Payload template vars | `pkg/client/payload.go` (`templateVars` struct) |
-| Labels | `pkg/labels/labels.go` |
-| Condition type constants | `pkg/client/constants.go` |
-| Config file | `configs/config.yaml` |
-| Identity config & transport | `pkg/config/config.go` (`IdentityConfig`), `pkg/helper/suite.go` (WithBearerToken wiring) |
+## Writing E2E specs
 
-## Test Conventions
+### Files and names
 
-### File naming and structure
+- IMPORTANT: spec files end in `.go`, never `_test.go`. Specs are compiled into the `hyperfleet-e2e` binary, not run by `go test`. The only `_test.go` file in `e2e/` is `e2e/e2e_suite_test.go`, the ginkgo CLI entry point for `make e2e-ci`. Put no spec code there.
+- Path: `e2e/<suite>/descriptive-name.go`. The package name matches the directory.
+- Describe name: `[Suite: <suite>][<category>] Description`, for example `[Suite: cluster][baseline] Cluster Resource Type Lifecycle`. Match the categories already used in that suite.
 
-- **IMPORTANT:** Test files use `.go` extension, NOT `_test.go`. E2E tests are compiled into the binary, not run via `go test`. The single exception is `e2e/e2e_suite_test.go` — the ginkgo CLI entry point for parallel execution (`make e2e-ginkgo`); never add spec code there.
-- Location: `e2e/{suite}/descriptive-name.go` (package matches directory name)
-- Test name format: `[Suite: component][category] Description` (e.g., `[Suite: cluster][baseline] Cluster Resource Type Lifecycle`). Known categories: `baseline`, `update`, `delete`, `concurrent`, `negative`, `perf`.
-- Test suites auto-register via blank import in `e2e/e2e.go`
+### Labels (from `pkg/labels`, never string literals)
 
-### Labels
+- Every spec carries exactly one severity label: `labels.Tier0` (blocks release), `labels.Tier1` (important), `labels.Tier2` (edge case, can defer).
+- `make test` enforces this: `pkg/labels/validate_test.go` parses every spec in `e2e/`.
+- Optional labels are in `pkg/labels/labels.go`.
 
-Every test MUST have exactly one severity label from `pkg/labels`:
+### Waiting on async state
 
-- `labels.Tier0` — critical path, blocks release
-- `labels.Tier1` — important features
-- `labels.Tier2` — edge cases, can defer
-
-Optional: `labels.Negative`, `labels.Performance`, `labels.Upgrade`, `labels.Disruptive`, `labels.Slow`
-
-### Async operations — pollers + custom matchers
-
-**IMPORTANT:** Use pollers with custom matchers. Do NOT create `WaitFor*` wrapper functions that hide `Eventually` inside helpers.
+Use `Eventually` with a poller and a matcher in the spec itself. Do not write `WaitFor*` helpers that hide `Eventually`.
 
 ```go
-// Wait for resource condition
 Eventually(h.PollCluster(ctx, clusterID), h.Cfg.Timeouts.Cluster.Reconciled, h.Cfg.Polling.Interval).
     Should(helper.HaveResourceCondition(client.ConditionTypeReconciled, client.ResourceConditionStatusTrue))
-
-// Wait for all adapters at generation
-Eventually(h.PollClusterAdapterStatuses(ctx, clusterID), h.Cfg.Timeouts.Adapter.Processing, h.Cfg.Polling.Interval).
-    Should(helper.HaveAllAdaptersAtGeneration(h.Cfg.Adapters.Cluster, expectedGen))
-
-// Wait for hard-delete (404)
-Eventually(h.PollClusterHTTPStatus(ctx, clusterID), timeout, h.Cfg.Polling.Interval).
-    Should(Equal(http.StatusNotFound))
-
-// Wait for namespace cleanup
-Eventually(h.PollNamespacesByPrefix(ctx, clusterID), timeout, h.Cfg.Polling.Interval).
-    Should(BeEmpty())
 ```
 
-Available pollers: `PollCluster`, `PollNodePool`, `PollClusterAdapterStatuses`, `PollNodePoolAdapterStatuses`, `PollClusterHTTPStatus`, `PollNodePoolHTTPStatus`, `PollNamespacesByPrefix`.
-
-Available matchers: `HaveResourceCondition`, `HaveAllAdaptersWithCondition`, `HaveAllAdaptersAtGeneration`, `HaveAuditIdentity`.
-
-For one-off complex assertions, use `Eventually(func(g Gomega) { ... }).Should(Succeed())` with `g.Expect()` (not bare `Expect()`).
+- For a one-off compound check, use `Eventually(func(g Gomega) { g.Expect(...) }).Should(Succeed())`. Inside the closure, call `g.Expect`, not bare `Expect`.
+- Take timeouts and intervals from `h.Cfg.Timeouts.*` and `h.Cfg.Polling.Interval`. Never hardcode durations.
+- Mark major steps with `ginkgo.By()`, but never inside an `Eventually` closure.
 
 ### Cleanup
 
-Every test MUST clean up resources with `ginkgo.DeferCleanup` inline right after resource creation.
+- Register `ginkgo.DeferCleanup` right after you create each resource. Helpers such as `h.DeferClusterCleanup` exist in `pkg/helper/helper.go`.
+- Exception: in an `Ordered` container where a later spec uses a resource an earlier spec created, register the cleanup in `BeforeAll`. A `DeferCleanup` made inside an `It` runs when that `It` ends, before the later specs run. Say so in a comment, as `e2e/adapter/adapter_with_desire.go` does.
 
-### Payload templates
+### Payloads
 
-Resolve payload paths via `h.TestDataPath()` — never hardcode `testdata/` as a prefix (breaks when `TESTDATA_DIR` is overridden, e.g., in CI):
+- Resolve payload paths with `h.TestDataPath("payloads/...")`. Never hardcode a `testdata/` prefix, because CI overrides `TESTDATA_DIR`.
+- Payloads in `testdata/payloads/` are Go templates. The available variables are the `templateVars` struct in `pkg/client/payload.go`.
 
-```go
-h.Client.CreateClusterFromPayload(ctx, h.TestDataPath("payloads/clusters/cluster-request.json"))
-```
+### Audit identity (JWT)
 
-Payloads in `testdata/payloads/` support Go templates. Available variables (defined in `pkg/client/payload.go`):
-
-- `.Random` — 8-char random hex
-- `.UUID` — full UUID v4
-- `.Timestamp` — Unix seconds
-- `.TimestampMs` — Unix milliseconds
-
-### Step markers
-
-Use `ginkgo.By()` for major steps. **IMPORTANT:** Never use `ginkgo.By()` inside `Eventually` closures.
-
-### Timeouts and intervals
-
-Always use config values: `h.Cfg.Timeouts.Cluster.Reconciled`, `h.Cfg.Timeouts.NodePool.Reconciled`, `h.Cfg.Timeouts.Adapter.Processing`, `h.Cfg.Polling.Interval`. Never hardcode durations.
-
-### JWT authentication (caller identity)
-
-When `server.jwt.enabled=true`, the API authenticates requests via JWT. The E2E framework acquires a token from K8s using the TokenRequest API — no static tokens or secrets to manage.
-
-```yaml
-# configs/config.yaml
-identity:
-  expectedIdentity: "system:serviceaccount:hyperfleet:hyperfleet-e2e-sa"
-  tokenRequest:
-    serviceAccountName: "hyperfleet-e2e-sa"
-    namespace: "hyperfleet"
-```
-
-Or via env vars:
-```bash
-HYPERFLEET_IDENTITY_TOKENREQUEST_SERVICEACCOUNTNAME=hyperfleet-e2e-sa \
-HYPERFLEET_IDENTITY_TOKENREQUEST_NAMESPACE=hyperfleet \
-HYPERFLEET_IDENTITY_EXPECTEDIDENTITY=system:serviceaccount:hyperfleet:hyperfleet-e2e-sa \
-./bin/hyperfleet-e2e test
-```
-
-The acquired token is injected as `Authorization: Bearer` on every API request via `client.WithBearerToken`.
-
-The `expectedIdentity` field is the audit identity the API resolves from the JWT claim. It's used by test assertions to verify `created_by` / `deleted_by` fields:
+When a spec checks `created_by` / `deleted_by`, guard the check. Audit checks are skipped when no identity is configured:
 
 ```go
 if expected := h.ExpectedIdentity(); expected != "" {
@@ -151,23 +82,15 @@ if expected := h.ExpectedIdentity(); expected != "" {
 }
 ```
 
-When `expectedIdentity` is empty, audit assertions are skipped.
-## Boundaries
-
-### DON'T
-
-- Use `_test.go` suffix for E2E test files (sole exception: `e2e/e2e_suite_test.go`, the ginkgo CLI entry point)
-- Hardcode timeout durations — use `h.Cfg.Timeouts.*`
-- Skip cleanup (`DeferCleanup`)
-- Use `ginkgo.By()` inside `Eventually` closures
-- Import `e2e/*` packages from `pkg/` code
-
 ## Gotchas
 
-- `Validate()` in `pkg/config/config.go` returns `error`, does not panic — only checks that `API.URL` is non-empty
-- `helper.New()` calls `log.Fatalf` if config is nil — tests must call `SetSuiteConfig` before running
-- Config priority: CLI flags > env vars (`HYPERFLEET_*` prefix) > `configs/config.yaml` > built-in defaults (see `pkg/config/defaults.go`)
-- Config file path priority: `--config` flag > `HYPERFLEET_CONFIG` env > `./configs/config.yaml` auto-detect
-- Adapter names come from `h.Cfg.Adapters.Cluster` and `h.Cfg.Adapters.NodePool` at runtime — never hardcode adapter names. Values in `configs/config.yaml` (e.g., `cl-namespace`) override compiled defaults in `pkg/config/defaults.go` (e.g., `clusters-namespace`)
-- `e2e-ci` Makefile target sets `TESTDATA_DIR` to absolute path and writes JUnit XML to `output/`
-- JWT auth is required when the API has `server.jwt.enabled=true` (production default). Set `identity.tokenRequest.serviceAccountName` and `.namespace` — the framework acquires a token via the K8s TokenRequest API at startup.
+- Adapter names come from config at runtime: `h.Cfg.Adapters.Cluster` and `h.Cfg.Adapters.NodePool`. Never hardcode them. `configs/config.yaml` (for example `cl-namespace`) overrides the compiled defaults in `pkg/config/defaults.go` (for example `clusters-namespace`).
+- Config priority: CLI flags > `HYPERFLEET_*` env vars > `configs/config.yaml` > `pkg/config/defaults.go`. Config file path: `--config` > `HYPERFLEET_CONFIG` > `./configs/config.yaml`.
+- `helper.New()` calls `log.Fatalf` when the suite config is nil; call `helper.SetSuiteConfig` first. `Config.Validate()` returns an error rather than panicking. Outside `--dry-run` it requires `API.URL` and a `RunID` that is a valid K8s label value (`RUN_ID`), and it always checks `brokerType`.
+- The API runs with JWT enabled by default. Set `identity.tokenRequest.serviceAccountName` and `.namespace`. The framework then gets a token from the K8s TokenRequest API at startup and sends it as `Authorization: Bearer` on every request.
+- Logging uses `log/slog` directly. There is no custom logger wrapper.
+
+## Boundaries
+
+- Never import `e2e/*` packages from `pkg/`.
+- Keep E2E specs to user journeys and critical operations. Field validation and single-component behavior belong in unit or integration tests (see the test placement strategy above).

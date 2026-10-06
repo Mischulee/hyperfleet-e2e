@@ -147,6 +147,10 @@ func (c *CleanupHelper) SweepLabeledResources(ctx context.Context) error {
 	slog.Info("Starting robust test cleanup with label selector:", "labelSelector", c.labelSelectorListOptions.LabelSelector)
 
 	// Phase 1: Delete ResourceBundles Created by Run ID
+	// A run without Maestro (the desire-transport stack) has nothing to sweep here:
+	// the lookup fails, this phase logs "failed to get resource bundles by run Id",
+	// and the sweep continues. That error is expected on such runs. HYPERFLEET-1505
+	// removes this phase together with the Maestro client.
 	slog.Info("Phase 1: Best effort to delete Resource Bundles created by run ID")
 	if rbs, err := c.maestroClient.FindResourceBundlesByRunID(ctx, c.cfg.RunID); err == nil {
 		for _, rb := range rbs {
